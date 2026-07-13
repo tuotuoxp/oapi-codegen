@@ -1,0 +1,36 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: Test x-go-ref with external JSON schema $ref in header/query parameters
+servers:
+  - url: http://example.com/api
+
+# This spec validates that x-go-type + x-go-ref declared inside an external
+# JSON schema file (whole-document $ref, no #-fragment) are properly collected
+# as Go imports for both `in: header` and `in: query` parameters.
+paths:
+  /v1/admin/agreements:
+    post:
+      operationId: AdminUpsertHeader
+      parameters:
+        - name: X-GW-Admin-ID
+          in: header
+          required: true
+          schema:
+            $ref: 'x-gw-admin-id.schema.json'
+      responses:
+        '200':
+          description: OK
+
+  /v1/admin/query:
+    get:
+      operationId: AdminUpsertQuery
+      parameters:
+        - name: X-GW-Admin-ID
+          in: query
+          required: true
+          schema:
+            $ref: 'x-gw-admin-id.schema.json'
+      responses:
+        '200':
+          description: OK

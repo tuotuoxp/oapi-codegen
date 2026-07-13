@@ -1,0 +1,6 @@
+{
+  "title": "PlainAdminIDHeader",
+  "type": "integer",
+  "format": "int64",
+  "minimum": 1
+}

@@ -1,0 +1,11 @@
+{
+  "title": "XGWAdminIDHeader",
+  "x-go-type": "XGWAdminIDHeader",
+  "x-go-ref": {
+    "path": "valuzon/backend/sdks/common/openapi",
+    "alias": "sdkopenapi"
+  },
+  "type": "integer",
+  "format": "int64",
+  "minimum": 1
+}
