@@ -102,6 +102,22 @@ paths:
         '200':
           $ref: '#/components/responses/ComplexResponse'
 
+  /parameters/header-ref:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/TraceHeader"
+      responses:
+        '200':
+          $ref: '#/components/responses/ComplexResponse'
+
+  /parameters/cookie-ref:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/AuthCookie"
+      responses:
+        '200':
+          $ref: '#/components/responses/ComplexResponse'
+
   /requests/{path}:
     post:
       parameters:
@@ -235,3 +251,21 @@ components:
         x-go-type: sessions.Session
         x-go-type-import:
           path: github.com/gorilla/sessions
+
+    TraceHeader:
+      name: X-Trace-Id
+      in: header
+      schema:
+        x-go-type: Request
+        x-go-ref:
+          path: github.com/go-resty/resty
+          alias: resty
+
+    AuthCookie:
+      name: auth
+      in: cookie
+      schema:
+        x-go-type: Token
+        x-go-ref:
+          path: github.com/golang-jwt/jwt
+          alias: jwt

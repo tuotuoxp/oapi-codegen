@@ -168,6 +168,8 @@ func TestGoTypeImport(t *testing.T) {
 		`github.com/gorilla/schema`,            // direct parameters - header
 		`github.com/gorilla/mux`,              // component parameters - header
 		`github.com/gorilla/sessions`,         // component parameters - cookie
+		`resty "github.com/go-resty/resty"`,   // component parameters - header (x-go-ref)
+		`jwt "github.com/golang-jwt/jwt"`,     // component parameters - cookie (x-go-ref)
 	}
 
 	// Check import
