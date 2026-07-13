@@ -115,6 +115,12 @@ paths:
             x-go-type: schema.Values
             x-go-type-import:
               path: github.com/gorilla/schema
+        - name: correlation_cookie
+          in: cookie
+          schema:
+            x-go-type: securecookie.SecureCookie
+            x-go-type-import:
+              path: github.com/gorilla/securecookie
       requestBody:
         required: true
         content:
