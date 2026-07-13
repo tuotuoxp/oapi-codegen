@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 
@@ -1033,6 +1034,10 @@ func applyGoRefQualification(typeName string, sref *openapi3.SchemaRef) (string,
 		return "", err
 	}
 	if gi == nil || gi.Path == "" || gi.Path == importMappingCurrentPackage {
+		return typeName, nil
+	}
+	if strings.Contains(typeName, ".") {
+		fmt.Fprintf(os.Stderr, "Warning: x-go-ref is set but x-go-type %q is already package-qualified; ignoring x-go-ref qualification to avoid invalid type\n", typeName)
 		return typeName, nil
 	}
 	return fmt.Sprintf("%s.%s", gi.Name, typeName), nil
