@@ -42,6 +42,13 @@ type Schema struct {
 
 	// The original OpenAPIv3 Schema.
 	OAPISchema *openapi3.Schema
+
+	// RefExtensions holds extensions from the outer SchemaRef (i.e., placed
+	// alongside a $ref) that are not part of the resolved schema Value.
+	// This is needed so that x-go-type/x-go-ref overlay annotations are
+	// available during import collection (OperationSchemaImports), which
+	// only has access to the Schema wrapper and not the original SchemaRef.
+	RefExtensions map[string]any
 }
 
 // IsPrimitive returns true if the schema represents a primitive OpenAPI type
@@ -382,6 +389,7 @@ func GenerateGoSchema(sref *openapi3.SchemaRef, path []string) (Schema, error) {
 			DefineViaAlias:      true,
 			SkipOptionalPointer: skipOptionalPointer,
 			OAPISchema:          schema,
+			RefExtensions:       sref.Extensions,
 		}, nil
 	}
 
@@ -389,6 +397,7 @@ func GenerateGoSchema(sref *openapi3.SchemaRef, path []string) (Schema, error) {
 		Description:         schema.Description,
 		OAPISchema:          schema,
 		SkipOptionalPointer: skipOptionalPointer,
+		RefExtensions:       sref.Extensions,
 	}
 
 	// Check x-go-type, which will completely override the definition of this

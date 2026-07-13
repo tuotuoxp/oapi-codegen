@@ -375,5 +375,69 @@ func TestGoRef(t *testing.T) {
 	assert.NotContains(t, code, `"github.com/yourorg/legacy"`, "x-go-type-import must not be used when x-go-ref is present")
 }
 
+// TestGoRefHeaderExternalJSON verifies that x-go-type + x-go-ref declared
+// *inside* an external JSON schema file (whole-document $ref, no # fragment)
+// produce the correct import and type reference for both `in: header` and
+// `in: query` parameters.
+func TestGoRefHeaderExternalJSON(t *testing.T) {
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			EchoServer:   true,
+			Models:       true,
+			EmbeddedSpec: true,
+		},
+	}
+	spec := "test_specs/x-go-ref-header-external-json.yaml"
+	swagger, err := util.LoadSwagger(spec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	assert.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	// Extensions are declared inside the JSON file; both header and query
+	// params should yield the import and the qualified type.
+	assert.Contains(t, code, `sdkopenapi "valuzon/backend/sdks/common/openapi"`,
+		"expected import from x-go-ref inside external JSON schema (header + query param)")
+	assert.Contains(t, code, "sdkopenapi.XGWAdminIDHeader",
+		"expected package-qualified type from x-go-ref inside external JSON schema")
+}
+
+// TestGoRefHeaderExternalJSONOverlay verifies that x-go-type + x-go-ref placed
+// *alongside* the $ref in the YAML (overlay annotations, not inside the
+// referenced JSON file) produce the correct import and type reference for both
+// `in: header` and `in: query` parameters.
+func TestGoRefHeaderExternalJSONOverlay(t *testing.T) {
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			EchoServer:   true,
+			Models:       true,
+			EmbeddedSpec: true,
+		},
+	}
+	spec := "test_specs/x-go-ref-header-external-json-overlay.yaml"
+	swagger, err := util.LoadSwagger(spec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	assert.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	// Extensions are declared next to the $ref in YAML (overlay); both header
+	// and query params should yield the import and the qualified type.
+	assert.Contains(t, code, `sdkopenapi "valuzon/backend/sdks/common/openapi"`,
+		"expected import from x-go-ref overlay next to external JSON $ref (header + query param)")
+	assert.Contains(t, code, "sdkopenapi.XGWAdminIDHeader",
+		"expected package-qualified type from x-go-ref overlay next to external JSON $ref")
+}
+
 //go:embed test_spec.yaml
 var testOpenAPIDefinition string

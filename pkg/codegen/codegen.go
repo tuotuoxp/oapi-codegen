@@ -1278,14 +1278,23 @@ func OperationSchemaImports(s *Schema) (map[string]goImport, error) {
 	res := map[string]goImport{}
 
 	for _, p := range s.Properties {
-		imprts, err := GoSchemaImports(&openapi3.SchemaRef{Value: p.Schema.OAPISchema})
+		imprts, err := GoSchemaImports(&openapi3.SchemaRef{
+			Value:      p.Schema.OAPISchema,
+			Extensions: p.Schema.RefExtensions,
+		})
 		if err != nil {
 			return nil, err
 		}
 		maps.Copy(res, imprts)
 	}
 
-	imprts, err := GoSchemaImports(&openapi3.SchemaRef{Value: s.OAPISchema})
+	// Include any extensions that were placed alongside the $ref (overlay
+	// annotations), so that ParseGoImportExtension can find them even when
+	// they are not part of the resolved schema Value.
+	imprts, err := GoSchemaImports(&openapi3.SchemaRef{
+		Value:      s.OAPISchema,
+		Extensions: s.RefExtensions,
+	})
 	if err != nil {
 		return nil, err
 	}
