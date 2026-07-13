@@ -1096,15 +1096,22 @@ func findSchemaNameByRefPath(refPath string, spec *openapi3.T) (string, error) {
 }
 
 func ParseGoImportExtension(v *openapi3.SchemaRef) (*goImport, error) {
-	// An x-go-type-import is only meaningful in concert with an x-go-type
-	// override. Without one, the imported package is never referenced in
-	// the generated code, producing an "imported and not used" compile
-	// error. Require at least one x-go-type to be in scope (either next to
-	// the $ref or on the referenced schema) before collecting an import.
+	// An x-go-type-import (or x-go-ref) is only meaningful in concert with
+	// an x-go-type override. Without one, the imported package is never
+	// referenced in the generated code, producing an "imported and not used"
+	// compile error. Require at least one x-go-type to be in scope (either
+	// next to the $ref or on the referenced schema) before collecting an import.
 	hasGoType := v.Extensions[extPropGoType] != nil ||
 		(v.Value != nil && v.Value.Extensions[extPropGoType] != nil)
 	if !hasGoType {
 		return nil, nil
+	}
+
+	// x-go-ref takes precedence over x-go-type-import.
+	if gi, err := parseGoRefExtension(v); err != nil {
+		return nil, err
+	} else if gi != nil {
+		return gi, nil
 	}
 
 	var goTypeImportExt any
@@ -1143,6 +1150,50 @@ func ParseGoImportExtension(v *openapi3.SchemaRef) (*goImport, error) {
 	}
 
 	return &gi, nil
+}
+
+// parseGoRefExtension reads an x-go-ref extension from v (checking next to $ref
+// before the schema itself) and converts it to a goImport. Returns nil, nil when
+// x-go-ref is absent. The alias field of x-go-ref maps to goImport.Name; when it
+// is empty, the name is derived from the last path segment of the import path.
+func parseGoRefExtension(v *openapi3.SchemaRef) (*goImport, error) {
+	var raw any
+	if v.Extensions[extPropGoRef] != nil {
+		raw = v.Extensions[extPropGoRef]
+	} else if v.Value != nil && v.Value.Extensions[extPropGoRef] != nil {
+		raw = v.Value.Extensions[extPropGoRef]
+	} else {
+		return nil, nil
+	}
+
+	ref, err := extParseGoRef(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid value for %q: %w", extPropGoRef, err)
+	}
+	if ref.Path == "" {
+		return nil, nil
+	}
+
+	if ref.Path == "" {
+		return nil, nil
+	}
+	if ref.Path == importMappingCurrentPackage {
+		return &goImport{Path: importMappingCurrentPackage}, nil
+	}
+
+	name := ref.Alias
+	if name == "" {
+		// derive alias from the last segment of the import path
+		trimmed := strings.TrimSuffix(ref.Path, "/")
+		parts := strings.Split(trimmed, "/")
+		name = parts[len(parts)-1]
+	}
+	name = SanitizeGoIdentity(name)
+	if name == "" {
+		return nil, fmt.Errorf("invalid value for %q: empty alias derived from path %q; set %q.alias explicitly", extPropGoRef, ref.Path, extPropGoRef)
+	}
+
+	return &goImport{Name: name, Path: ref.Path}, nil
 }
 
 // TypeDefinitionsEquivalent checks for equality between two type definitions, but

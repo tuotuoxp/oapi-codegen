@@ -329,5 +329,46 @@ paths:
 	assert.Contains(t, code, "roleName string")
 }
 
+func TestGoRef(t *testing.T) {
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			Models: true,
+		},
+	}
+	spec := "test_specs/x-go-ref-pet.yaml"
+	swagger, err := util.LoadSwagger(spec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	assert.NotEmpty(t, code)
+
+	// Verify the generated code is valid Go.
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	// x-go-type + x-go-ref with external path: alias derived from last path segment
+	// type ExternalPet = pack.Pet
+	assert.Contains(t, code, "pack.Pet", "expected package-qualified type from x-go-ref (alias from path segment)")
+	assert.Contains(t, code, `"github.com/yourorg/pack"`, "expected import from x-go-ref path")
+
+	// x-go-type + x-go-ref path="-": unqualified type, self-package not imported
+	assert.Contains(t, code, "LocalPetType", "expected unqualified type for same-package x-go-ref")
+	assert.NotContains(t, code, `"-"`, "self-package path must not appear in imports")
+
+	// x-go-type + x-go-ref with explicit alias: mypack.AliasedPetType
+	assert.Contains(t, code, "mypack.AliasedPetType", "expected alias-qualified type")
+	assert.Contains(t, code, `mypack "github.com/yourorg/other"`, "expected named import from x-go-ref with alias")
+
+	// x-go-ref without x-go-type: ignored, ordinary struct generated
+	assert.NotContains(t, code, `"github.com/yourorg/ignored"`, "x-go-ref without x-go-type must not produce an import")
+
+	// x-go-ref takes precedence over x-go-type-import
+	assert.Contains(t, code, "refpkg.PrecedenceType", "x-go-ref alias must win over x-go-type-import")
+	assert.Contains(t, code, `refpkg "github.com/yourorg/ref-wins"`, "x-go-ref path must win over x-go-type-import path")
+	assert.NotContains(t, code, `"github.com/yourorg/legacy"`, "x-go-type-import must not be used when x-go-ref is present")
+}
+
 //go:embed test_spec.yaml
 var testOpenAPIDefinition string

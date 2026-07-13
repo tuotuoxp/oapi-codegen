@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 
@@ -359,6 +360,12 @@ func GenerateGoSchema(sref *openapi3.SchemaRef, path []string) (Schema, error) {
 				return Schema{}, fmt.Errorf("error turning '%s: %v' into string",
 					extPropGoType, extension)
 			}
+			// Apply x-go-ref qualification when present alongside x-go-type.
+			if qualified, err := applyGoRefQualification(refType, sref); err != nil {
+				return Schema{}, err
+			} else {
+				refType = qualified
+			}
 		} else {
 			// Convert the reference path to Go type
 			var err error
@@ -391,6 +398,10 @@ func GenerateGoSchema(sref *openapi3.SchemaRef, path []string) (Schema, error) {
 		typeName, err := extTypeName(extension)
 		if err != nil {
 			return outSchema, fmt.Errorf("invalid value for %q: %w", extPropGoType, err)
+		}
+		// Apply x-go-ref qualification when present alongside x-go-type.
+		if typeName, err = applyGoRefQualification(typeName, sref); err != nil {
+			return outSchema, err
 		}
 		outSchema.GoType = typeName
 		outSchema.DefineViaAlias = true
@@ -1011,4 +1022,23 @@ func combinedSchemaExtensions(r *openapi3.SchemaRef) map[string]any {
 	maps.Copy(combined, r.Extensions)
 
 	return combined
+}
+
+// applyGoRefQualification qualifies typeName with the package alias from an
+// x-go-ref extension if present. When x-go-ref carries an external import path
+// the returned name is "alias.typeName"; when absent or the path is "-"
+// (importMappingCurrentPackage), typeName is returned unchanged.
+func applyGoRefQualification(typeName string, sref *openapi3.SchemaRef) (string, error) {
+	gi, err := parseGoRefExtension(sref)
+	if err != nil {
+		return "", err
+	}
+	if gi == nil || gi.Path == "" || gi.Path == importMappingCurrentPackage {
+		return typeName, nil
+	}
+	if strings.Contains(typeName, ".") {
+		fmt.Fprintf(os.Stderr, "Warning: x-go-ref is set but x-go-type %q is already package-qualified; ignoring x-go-ref qualification to avoid invalid type\n", typeName)
+		return typeName, nil
+	}
+	return fmt.Sprintf("%s.%s", gi.Name, typeName), nil
 }
