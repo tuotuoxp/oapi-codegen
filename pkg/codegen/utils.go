@@ -1174,11 +1174,23 @@ func parseGoRefExtension(v *openapi3.SchemaRef) (*goImport, error) {
 		return nil, nil
 	}
 
+	if ref.Path == "" {
+		return nil, nil
+	}
+	if ref.Path == importMappingCurrentPackage {
+		return &goImport{Path: importMappingCurrentPackage}, nil
+	}
+
 	name := ref.Alias
 	if name == "" {
 		// derive alias from the last segment of the import path
-		parts := strings.Split(ref.Path, "/")
+		trimmed := strings.TrimSuffix(ref.Path, "/")
+		parts := strings.Split(trimmed, "/")
 		name = parts[len(parts)-1]
+	}
+	name = SanitizeGoIdentity(name)
+	if name == "" {
+		return nil, fmt.Errorf("invalid value for %q: empty alias derived from path %q; set %q.alias explicitly", extPropGoRef, ref.Path, extPropGoRef)
 	}
 
 	return &goImport{Name: name, Path: ref.Path}, nil
