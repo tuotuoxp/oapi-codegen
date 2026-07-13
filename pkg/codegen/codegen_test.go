@@ -373,6 +373,44 @@ func TestGoRef(t *testing.T) {
 	assert.Contains(t, code, "refpkg.PrecedenceType", "x-go-ref alias must win over x-go-type-import")
 	assert.Contains(t, code, `refpkg "github.com/yourorg/ref-wins"`, "x-go-ref path must win over x-go-type-import path")
 	assert.NotContains(t, code, `"github.com/yourorg/legacy"`, "x-go-type-import must not be used when x-go-ref is present")
+
+	// backward-compat: without package-import-path set, full-path ref is still external
+	assert.Contains(t, code, "mypack2.SamePackageType", "without package-import-path, full-path ref must remain alias-qualified")
+	assert.Contains(t, code, `mypack2 "github.com/myorg/mypack"`, "without package-import-path, full-path ref must still be imported")
+}
+
+func TestGoRefSamePackageImportPath(t *testing.T) {
+	opts := Configuration{
+		PackageName:       "api",
+		PackageImportPath: "github.com/myorg/mypack",
+		Generate: GenerateOptions{
+			Models: true,
+		},
+	}
+	spec := "test_specs/x-go-ref-pet.yaml"
+	swagger, err := util.LoadSwagger(spec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	assert.NotEmpty(t, code)
+
+	// Verify the generated code is valid Go.
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	// New: x-go-ref.path == package-import-path => unqualified, no import
+	assert.Contains(t, code, "SamePackageType", "expected unqualified type when path matches package-import-path")
+	assert.NotContains(t, code, "mypack2.SamePackageType", "type must not be alias-qualified for same-package full-path ref")
+	assert.NotContains(t, code, `"github.com/myorg/mypack"`, "same-package path must not appear in imports")
+
+	// Existing external paths still work.
+	assert.Contains(t, code, "pack.Pet", "external x-go-ref must remain package-qualified")
+	assert.Contains(t, code, `"github.com/yourorg/pack"`, "external x-go-ref must still be imported")
+
+	// Existing "-" behaviour unchanged.
+	assert.Contains(t, code, "LocalPetType", "'-' x-go-ref must remain unqualified")
+	assert.NotContains(t, code, `"-"`, "self-package sentinel must not appear in imports")
 }
 
 //go:embed test_spec.yaml
