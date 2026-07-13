@@ -86,6 +86,14 @@ paths:
         '200':
           $ref: '#/components/responses/ComplexResponse'
 
+  /parameters/header:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/CorrelationHeader"
+      responses:
+        '200':
+          $ref: '#/components/responses/ComplexResponse'
+
   /requests/{path}:
     post:
       parameters:
@@ -101,6 +109,12 @@ paths:
             x-go-type: pgtype.Color
             x-go-type-import:
               path: github.com/jackc/pgtype
+        - name: X-Correlation-Id
+          in: header
+          schema:
+            x-go-type: schema.Values
+            x-go-type-import:
+              path: github.com/gorilla/schema
       requestBody:
         required: true
         content:
@@ -191,3 +205,11 @@ components:
         x-go-type: swag.Swag
         x-go-type-import:
           path: github.com/go-openapi/swag
+
+    CorrelationHeader:
+      name: X-Correlation-Header
+      in: header
+      schema:
+        x-go-type: mux.Router
+        x-go-type-import:
+          path: github.com/gorilla/mux

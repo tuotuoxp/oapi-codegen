@@ -165,6 +165,8 @@ func TestGoTypeImport(t *testing.T) {
 		`github.com/jackc/pgtype`,              // direct parameters - path
 		`github.com/mailru/easyjson`,           // direct parameters - query
 		`github.com/subosito/gotenv`,           // direct request body
+		`github.com/gorilla/schema`,            // direct parameters - header
+		`github.com/gorilla/mux`,              // component parameters - header
 	}
 
 	// Check import

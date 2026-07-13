@@ -1296,7 +1296,7 @@ func OperationSchemaImports(s *Schema) (map[string]goImport, error) {
 func OperationImports(ops []OperationDefinition) (map[string]goImport, error) {
 	res := map[string]goImport{}
 	for _, op := range ops {
-		for _, pd := range [][]ParameterDefinition{op.PathParams, op.QueryParams} {
+		for _, pd := range [][]ParameterDefinition{op.PathParams, op.QueryParams, op.HeaderParams, op.CookieParams} {
 			for _, p := range pd {
 				imprts, err := OperationSchemaImports(&p.Schema)
 				if err != nil {
