@@ -94,6 +94,14 @@ paths:
         '200':
           $ref: '#/components/responses/ComplexResponse'
 
+  /parameters/cookie:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        '200':
+          $ref: '#/components/responses/ComplexResponse'
+
   /requests/{path}:
     post:
       parameters:
@@ -219,3 +227,11 @@ components:
         x-go-type: mux.Router
         x-go-type-import:
           path: github.com/gorilla/mux
+
+    SessionCookie:
+      name: session
+      in: cookie
+      schema:
+        x-go-type: sessions.Session
+        x-go-type-import:
+          path: github.com/gorilla/sessions

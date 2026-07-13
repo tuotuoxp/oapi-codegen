@@ -167,6 +167,7 @@ func TestGoTypeImport(t *testing.T) {
 		`github.com/subosito/gotenv`,           // direct request body
 		`github.com/gorilla/schema`,            // direct parameters - header
 		`github.com/gorilla/mux`,              // component parameters - header
+		`github.com/gorilla/sessions`,         // component parameters - cookie
 	}
 
 	// Check import
