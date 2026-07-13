@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"strings"
 )
 
 const (
@@ -15,6 +16,11 @@ const (
 	extPropGoTypeSkipOptionalPointer = "x-go-type-skip-optional-pointer"
 	// extPropGoImport specifies the module to import which provides above type
 	extPropGoImport = "x-go-type-import"
+	// extPropGoRef qualifies x-go-type with package import information, using
+	// the same shape as go-jsonschema: {"path": "...", "alias": "..."}.
+	// When present alongside x-go-type, x-go-ref takes precedence over
+	// x-go-type-import for determining the import and type qualifier.
+	extPropGoRef = "x-go-ref"
 	// extGoName is used to override a field name
 	extGoName = "x-go-name"
 	// extGoTypeName overrides a generated typename. When
@@ -34,6 +40,12 @@ const (
 	// This is intended to be used alongside the `allow-unexported-struct-field-names` Compatibility option
 	extOapiCodegenOnlyHonourGoName = "x-oapi-codegen-only-honour-go-name"
 )
+
+// goRef holds the parsed contents of an x-go-ref extension.
+type goRef struct {
+	Path  string // import path, e.g. "github.com/yourorg/pack"
+	Alias string // optional package alias/name, e.g. "mypack"
+}
 
 func extString(extPropValue any) (string, error) {
 	str, ok := extPropValue.(string)
@@ -125,4 +137,30 @@ func extParseOapiCodegenOnlyHonourGoName(extPropValue any) (bool, error) {
 		return false, fmt.Errorf("failed to convert type: %T", extPropValue)
 	}
 	return onlyHonourGoName, nil
+}
+
+// extParseGoRef parses the raw value of an x-go-ref extension into a goRef.
+// The extension is expected to be a map with "path" (required) and optional "alias" keys.
+func extParseGoRef(extPropValue any) (*goRef, error) {
+	m, ok := extPropValue.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("failed to convert type: %T", extPropValue)
+	}
+	ref := &goRef{}
+	for k, v := range m {
+		if strings.EqualFold(k, "path") {
+			vs, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("failed to convert type: %T", v)
+			}
+			ref.Path = vs
+		} else if strings.EqualFold(k, "alias") {
+			vs, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("failed to convert type: %T", v)
+			}
+			ref.Alias = vs
+		}
+	}
+	return ref, nil
 }

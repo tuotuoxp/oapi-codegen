@@ -1,0 +1,108 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: x-go-ref test
+servers:
+  - url: http://petstore.swagger.io/api
+paths:
+  /pets/external:
+    get:
+      description: returns a type from an external package qualified via x-go-ref
+      responses:
+        "200":
+          description: pet response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalPet"
+  /pets/same-package:
+    get:
+      description: returns a type from the same package (x-go-ref path = "-")
+      responses:
+        "200":
+          description: pet response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalPet"
+  /pets/explicit-alias:
+    get:
+      description: returns a type with an explicit alias provided via x-go-ref
+      responses:
+        "200":
+          description: pet response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AliasedPet"
+  /pets/ref-without-go-type:
+    get:
+      description: x-go-ref without x-go-type is ignored
+      responses:
+        "200":
+          description: pet response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IgnoredRef"
+  /pets/ref-overrides-import:
+    get:
+      description: x-go-ref takes precedence over x-go-type-import
+      responses:
+        "200":
+          description: pet response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrecedencePet"
+components:
+  schemas:
+    # x-go-type + x-go-ref (alias derived from path) => qualified type + import
+    ExternalPet:
+      x-go-type: Pet
+      x-go-ref:
+        path: github.com/yourorg/pack
+      type: object
+      properties:
+        name:
+          type: string
+    # x-go-type + x-go-ref path="-" => unqualified type, no import
+    LocalPet:
+      x-go-type: LocalPetType
+      x-go-ref:
+        path: "-"
+      type: object
+      properties:
+        name:
+          type: string
+    # x-go-type + x-go-ref with explicit alias => alias.Type + import
+    AliasedPet:
+      x-go-type: AliasedPetType
+      x-go-ref:
+        path: github.com/yourorg/other
+        alias: mypack
+      type: object
+      properties:
+        name:
+          type: string
+    # x-go-ref without x-go-type => ignored, ordinary struct is generated
+    IgnoredRef:
+      x-go-ref:
+        path: github.com/yourorg/ignored
+      type: object
+      properties:
+        name:
+          type: string
+    # x-go-type + both x-go-ref and x-go-type-import => x-go-ref takes precedence
+    PrecedencePet:
+      x-go-type: PrecedenceType
+      x-go-ref:
+        path: github.com/yourorg/ref-wins
+        alias: refpkg
+      x-go-type-import:
+        name: legacypkg
+        path: github.com/yourorg/legacy
+      type: object
+      properties:
+        name:
+          type: string
