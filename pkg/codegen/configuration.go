@@ -35,6 +35,11 @@ type Configuration struct {
 	ImportMapping map[string]string `yaml:"import-mapping,omitempty"`
 	// AdditionalImports defines any additional Go imports to add to the generated code
 	AdditionalImports []AdditionalImport `yaml:"additional-imports,omitempty"`
+	// PackageImportPath is the full Go import path of the package being generated (e.g.
+	// "github.com/myorg/mypack"). When set, any x-go-ref whose path equals this value is
+	// treated as a same-package reference: no package qualifier is applied and no import
+	// is emitted, exactly as if the path were "-".
+	PackageImportPath string `yaml:"package-import-path,omitempty"`
 	// NoVCSVersionOverride allows overriding the version of the application for cases where no Version Control System (VCS) is available when building, for instance when using a Nix derivation.
 	// See documentation for how to use it in examples/no-vcs-version-override/README.md
 	NoVCSVersionOverride *string `yaml:"-"`

@@ -55,6 +55,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PrecedencePet"
+  /pets/same-package-full-path:
+    get:
+      description: x-go-ref path matches package-import-path => unqualified, no import
+      responses:
+        "200":
+          description: pet response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SamePackageFullPathPet"
 components:
   schemas:
     # x-go-type + x-go-ref (alias derived from path) => qualified type + import
@@ -89,6 +99,16 @@ components:
     IgnoredRef:
       x-go-ref:
         path: github.com/yourorg/ignored
+      type: object
+      properties:
+        name:
+          type: string
+    # x-go-type + x-go-ref with explicit alias + package-import-path matches => unqualified, no import
+    SamePackageFullPathPet:
+      x-go-type: SamePackageType
+      x-go-ref:
+        path: github.com/myorg/mypack
+        alias: mypack2
       type: object
       properties:
         name:

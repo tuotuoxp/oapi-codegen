@@ -1152,6 +1152,20 @@ func ParseGoImportExtension(v *openapi3.SchemaRef) (*goImport, error) {
 	return &gi, nil
 }
 
+// isSamePackageRef reports whether path refers to the current (same) package.
+// A path is considered same-package when it is the sentinel value "-"
+// (importMappingCurrentPackage) or when it equals the PackageImportPath
+// configured for the current generation run.
+func isSamePackageRef(path string) bool {
+	if path == importMappingCurrentPackage {
+		return true
+	}
+	if pip := globalState.options.PackageImportPath; pip != "" && path == pip {
+		return true
+	}
+	return false
+}
+
 // parseGoRefExtension reads an x-go-ref extension from v (checking next to $ref
 // before the schema itself) and converts it to a goImport. Returns nil, nil when
 // x-go-ref is absent. The alias field of x-go-ref maps to goImport.Name; when it
@@ -1174,10 +1188,7 @@ func parseGoRefExtension(v *openapi3.SchemaRef) (*goImport, error) {
 		return nil, nil
 	}
 
-	if ref.Path == "" {
-		return nil, nil
-	}
-	if ref.Path == importMappingCurrentPackage {
+	if isSamePackageRef(ref.Path) {
 		return &goImport{Path: importMappingCurrentPackage}, nil
 	}
 

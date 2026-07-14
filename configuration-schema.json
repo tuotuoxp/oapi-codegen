@@ -212,7 +212,9 @@
           "description": "DisableTypeAliasesForType allows defining which OpenAPI `type`s will explicitly not use type aliases",
           "items": {
             "type": "string",
-            "enum": ["array"]
+            "enum": [
+              "array"
+            ]
           }
         },
         "name-normalizer": {
@@ -239,7 +241,9 @@
               "default": true
             }
           },
-          "required": ["path"]
+          "required": [
+            "path"
+          ]
         },
         "yaml-tags": {
           "type": "boolean",
@@ -314,13 +318,19 @@
             "type": "string"
           }
         },
-        "required": ["package"]
+        "required": [
+          "package"
+        ]
       },
       "description": "AdditionalImports defines any additional Go imports to add to the generated code"
     },
     "output": {
       "type": "string",
       "description": "The filename to output"
+    },
+    "package-import-path": {
+      "type": "string",
+      "description": "The full Go import path of the package being generated (e.g. \"github.com/myorg/mypack\"). When set, any x-go-ref whose path equals this value is treated as a same-package reference: the type is left unqualified and no import is emitted, identical to the x-go-ref path=\"-\" behaviour."
     }
   },
   "required": [
