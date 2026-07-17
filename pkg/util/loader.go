@@ -415,7 +415,11 @@ func rebaseIncludedRelativeRefValue(node *yaml.Node, currentFile string, rootDir
 	}
 
 	targetPath := filepath.Clean(filepath.Join(filepath.Dir(currentFile), filepath.FromSlash(refURI.Path)))
-	rebasedPath, err := filepath.Rel(rootDir, targetPath)
+	realRootDir := rootDir
+	if resolvedRoot, err := filepath.EvalSymlinks(rootDir); err == nil {
+		realRootDir = resolvedRoot
+	}
+	rebasedPath, err := filepath.Rel(realRootDir, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to rewrite $ref %q in %q: %w", refValue, currentFile, err)
 	}
