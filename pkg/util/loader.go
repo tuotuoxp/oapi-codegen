@@ -267,7 +267,7 @@ func expandIncludesInArray(node *yaml.Node, currentFile string, rootDir string, 
 				return fmt.Errorf("failed to process !include_array in %q for %q: included value must be an array", currentFile, includePath)
 			}
 			for _, includedItem := range includedNode.Content {
-				expandedItems = append(expandedItems, cloneYAMLNode(includedItem))
+				expandedItems = append(expandedItems, includedItem)
 			}
 			continue
 		}
@@ -275,8 +275,7 @@ func expandIncludesInArray(node *yaml.Node, currentFile string, rootDir string, 
 		if err := expandIncludes(itemNode, currentFile, rootDir, stack); err != nil {
 			return err
 		}
-		expandedItems = append(expandedItems, cloneYAMLNode(itemNode))
-	}
+		expandedItems = append(expandedItems, itemNode)
 
 	node.Content = expandedItems
 	return nil
