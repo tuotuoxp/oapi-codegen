@@ -212,12 +212,18 @@ func expandIncludesInMap(node *yaml.Node, currentFile string, rootDir string, st
 			}
 
 			for j := 0; j+1 < len(includedNode.Content); j += 2 {
-				mergedKey := includedNode.Content[j].Value
+				mergedKeyNode := includedNode.Content[j]
+				mergedValueNode := includedNode.Content[j+1]
+				if mergedKeyNode.Kind != yaml.ScalarNode {
+					return fmt.Errorf("failed to process merge include in %q for %q: included object contains a non-scalar key", currentFile, includePath)
+				}
+
+				mergedKey := mergedKeyNode.Value
 				if _, found := mergedValues[mergedKey]; !found {
 					mergedKeys = append(mergedKeys, mergedKey)
-					mergedKeyNodes[mergedKey] = cloneYAMLNode(includedNode.Content[j])
+					mergedKeyNodes[mergedKey] = mergedKeyNode
 				}
-				mergedValues[mergedKey] = cloneYAMLNode(includedNode.Content[j+1])
+				mergedValues[mergedKey] = mergedValueNode
 			}
 			continue
 		}
@@ -225,8 +231,7 @@ func expandIncludesInMap(node *yaml.Node, currentFile string, rootDir string, st
 		if err := expandIncludes(valueNode, currentFile, rootDir, stack); err != nil {
 			return err
 		}
-		resultPairs = append(resultPairs, cloneYAMLNode(keyNode), cloneYAMLNode(valueNode))
-	}
+		resultPairs = append(resultPairs, keyNode, valueNode)
 
 	if len(mergedKeys) == 0 {
 		node.Content = resultPairs
