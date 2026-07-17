@@ -2003,6 +2003,69 @@ output-options:
 
 For a complete example see [`examples/only-models`](examples/only-models).
 
+## YAML include preprocessing extension (`!include`, `!include_array`)
+
+`oapi-codegen` supports a non-standard YAML preprocessing extension before OpenAPI parsing. This is **not** part of the OpenAPI specification.
+
+Processing order:
+
+1. Expand `!include`, `!include_array`, and `<<: !include`
+2. Parse the expanded document as OpenAPI (including normal `$ref` handling)
+
+### `!include` node replacement
+
+```yaml
+some_obj: !include ./obj.yaml
+some_array: !include ./arr.yaml
+```
+
+`!include` replaces the full node and can include an object, array, or scalar.
+
+### Object merge include (`<<: !include`)
+
+```yaml
+some_obj:
+  prop_a: local-a
+  <<: !include ./aaa.yaml
+  <<: !include ./bbb.yaml
+  prop_b: local-b
+```
+
+Merge/override rules are deterministic:
+
+- include order: later include overrides earlier include (`bbb` overrides `aaa`)
+- local explicit keys override merged include keys (`prop_a`, `prop_b` win)
+- equivalent order: `merge(aaa) -> merge(bbb) -> apply(local explicit keys)`
+
+### Array behavior: flatten vs non-flatten
+
+```yaml
+some_array:
+  - val1
+  - !include_array ./items.yaml
+  - val2
+```
+
+If `items.yaml` is `[111, 222]`, result is `[val1, 111, 222, val2]`.
+
+```yaml
+some_array:
+  - val1
+  - !include ./items.yaml
+  - val2
+```
+
+If `items.yaml` is `[111, 222]`, result is `[val1, [111, 222], val2]`.
+
+`!include_array` requires the included file root to be an array.
+
+### Path resolution and safety
+
+- relative include paths are resolved from the including file directory
+- nested includes are supported
+- include cycles are rejected with the include chain in the error
+- include paths resolving outside the entry spec root directory are rejected
+
 ## Splitting large OpenAPI specs across multiple packages (aka "Import Mapping" or "external references")
 <a name=import-mapping></a>
 
