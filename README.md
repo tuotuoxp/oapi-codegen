@@ -2064,6 +2064,7 @@ If `items.yaml` is `[111, 222]`, result is `[val1, [111, 222], val2]`.
 - relative include paths are resolved from the including file directory
 - absolute paths follow OS/filesystem rules
 - includes may reference files anywhere on the filesystem, including outside the entry spec's directory
+- do not process untrusted specs with includes enabled (includes can read arbitrary local files)
 - nested includes are supported
 - include cycles are rejected with the include chain in the error
 
