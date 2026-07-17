@@ -267,9 +267,7 @@ func expandIncludesInArray(node *yaml.Node, currentFile string, rootDir string, 
 			if includedNode.Kind != yaml.SequenceNode {
 				return fmt.Errorf("failed to process !include_array in %q for %q: included value must be an array", currentFile, includePath)
 			}
-			for _, includedItem := range includedNode.Content {
-				expandedItems = append(expandedItems, includedItem)
-			}
+			expandedItems = append(expandedItems, includedNode.Content...)
 			continue
 		}
 
@@ -308,16 +306,15 @@ func loadIncludedNode(includeNode *yaml.Node, currentFile string, rootDir string
 		return nil, resolvedPath, fmt.Errorf("failed to include %q in %q: %w", resolvedPath, currentFile, err)
 	}
 
+	if err := rebaseIncludedRelativeRefs(includedDocument.Content[0], resolvedPath, rootDir); err != nil {
+		return nil, resolvedPath, err
+	}
+
 	if err := expandIncludes(includedDocument, resolvedPath, rootDir, append(stack, resolvedPath)); err != nil {
 		return nil, resolvedPath, err
 	}
 
-	includedNode := cloneYAMLNode(includedDocument.Content[0])
-	if err := rebaseIncludedRelativeRefs(includedNode, resolvedPath, rootDir); err != nil {
-		return nil, resolvedPath, err
-	}
-
-	return includedNode, resolvedPath, nil
+	return cloneYAMLNode(includedDocument.Content[0]), resolvedPath, nil
 }
 
 func resolveIncludePath(currentFile string, rootDir string, includeTarget string) (string, error) {
