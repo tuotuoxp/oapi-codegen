@@ -2064,7 +2064,7 @@ If `items.yaml` is `[111, 222]`, result is `[val1, [111, 222], val2]`.
 - relative include paths are resolved from the including file directory
 - nested includes are supported
 - include cycles are rejected with the include chain in the error
-- include paths resolving outside the entry spec root directory are rejected by default
+- include paths resolving outside the entry spec root directory are rejected
 
 ## Splitting large OpenAPI specs across multiple packages (aka "Import Mapping" or "external references")
 <a name=import-mapping></a>
