@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -186,23 +187,84 @@ func TestPreprocessSwaggerIncludes(t *testing.T) {
 }
 
 func TestLoadSwaggerWithIncludeAndRef(t *testing.T) {
-	entryPath := writeFixtureFiles(t, map[string]string{
-		"spec.yaml":    "openapi: 3.0.0\ninfo:\n  title: include spec\n  version: 1.0.0\npaths: !include ./paths.yaml\ncomponents:\n  schemas: !include ./schemas.yaml\n",
-		"paths.yaml":   "/pets:\n  get:\n    operationId: listPets\n    responses:\n      '200':\n        description: ok\n        content:\n          application/json:\n            schema:\n              $ref: '#/components/schemas/Pet'\n",
-		"schemas.yaml": "Pet:\n  type: object\n  required:\n    - id\n  properties:\n    id:\n      type: string\n",
-	}, "spec.yaml")
+	t.Run("included-file-relative-ref-resolves-from-included-file", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":                    "openapi: 3.0.0\ninfo:\n  title: include spec\n  version: 1.0.0\npaths: !include ./some_dir/paths.yaml\n",
+			"some_dir/paths.yaml":          "/pets:\n  get:\n    operationId: listPets\n    responses:\n      '200':\n        description: ok\n        content:\n          application/json:\n            schema:\n              $ref: ./components/pet.yaml\n",
+			"some_dir/components/pet.yaml": "type: object\nrequired:\n  - fromIncluded\nproperties:\n  fromIncluded:\n    type: string\n",
+		}, "spec.yaml")
 
-	swagger, err := LoadSwagger(entryPath)
-	require.NoError(t, err)
+		swagger, err := LoadSwagger(entryPath)
+		require.NoError(t, err)
 
-	require.Contains(t, swagger.Components.Schemas, "Pet")
-	petSchema := swagger.Components.Schemas["Pet"]
-	require.NotNil(t, petSchema.Value)
-	require.Equal(t, []string{"object"}, petSchema.Value.Type.Slice())
+		petSchema := requireResponseSchema(t, swagger, "/pets")
+		require.Contains(t, petSchema.Value.Properties, "fromIncluded")
+	})
 
-	item := swagger.Paths.Find("/pets")
+	t.Run("guard against entry-file-based misresolution", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":                    "openapi: 3.0.0\ninfo:\n  title: include spec\n  version: 1.0.0\npaths: !include ./some_dir/paths.yaml\n",
+			"components/pet.yaml":          "type: object\nproperties:\n  fromEntry:\n    type: string\n",
+			"some_dir/paths.yaml":          "/pets:\n  get:\n    operationId: listPets\n    responses:\n      '200':\n        description: ok\n        content:\n          application/json:\n            schema:\n              $ref: ./components/pet.yaml\n",
+			"some_dir/components/pet.yaml": "type: object\nproperties:\n  fromIncluded:\n    type: string\n",
+		}, "spec.yaml")
+
+		swagger, err := LoadSwagger(entryPath)
+		require.NoError(t, err)
+
+		petSchema := requireResponseSchema(t, swagger, "/pets")
+		require.Contains(t, petSchema.Value.Properties, "fromIncluded")
+		require.NotContains(t, petSchema.Value.Properties, "fromEntry")
+	})
+
+	t.Run("nested include + ref", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":                         "openapi: 3.0.0\ninfo:\n  title: include spec\n  version: 1.0.0\npaths: !include ./some_dir/paths.yaml\n",
+			"some_dir/paths.yaml":               "/pets: !include ./operations/get-pets.yaml\n",
+			"some_dir/operations/get-pets.yaml": "get:\n  operationId: listPets\n  responses:\n    '200':\n      description: ok\n      content:\n        application/json:\n          schema:\n            $ref: ../components/pet.yaml\n",
+			"some_dir/components/pet.yaml":      "type: object\nproperties:\n  fromNestedInclude:\n    type: string\n",
+		}, "spec.yaml")
+
+		swagger, err := LoadSwagger(entryPath)
+		require.NoError(t, err)
+
+		petSchema := requireResponseSchema(t, swagger, "/pets")
+		require.Contains(t, petSchema.Value.Properties, "fromNestedInclude")
+	})
+
+	t.Run("included paths still resolve local component refs", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":    "openapi: 3.0.0\ninfo:\n  title: include spec\n  version: 1.0.0\npaths: !include ./paths.yaml\ncomponents:\n  schemas: !include ./schemas.yaml\n",
+			"paths.yaml":   "/pets:\n  get:\n    operationId: listPets\n    responses:\n      '200':\n        description: ok\n        content:\n          application/json:\n            schema:\n              $ref: '#/components/schemas/Pet'\n",
+			"schemas.yaml": "Pet:\n  type: object\n  required:\n    - id\n  properties:\n    id:\n      type: string\n",
+		}, "spec.yaml")
+
+		swagger, err := LoadSwagger(entryPath)
+		require.NoError(t, err)
+
+		require.Contains(t, swagger.Components.Schemas, "Pet")
+		petSchema := swagger.Components.Schemas["Pet"]
+		require.NotNil(t, petSchema.Value)
+		require.Equal(t, []string{"object"}, petSchema.Value.Type.Slice())
+
+		responseSchema := requireResponseSchema(t, swagger, "/pets")
+		require.Equal(t, "#/components/schemas/Pet", responseSchema.Ref)
+	})
+}
+
+func requireResponseSchema(t *testing.T, swagger *openapi3.T, path string) *openapi3.SchemaRef {
+	t.Helper()
+
+	item := swagger.Paths.Find(path)
 	require.NotNil(t, item)
-	require.Equal(t, "#/components/schemas/Pet", item.Get.Responses.Map()["200"].Value.Content.Get("application/json").Schema.Ref)
+	require.NotNil(t, item.Get)
+	response := item.Get.Responses.Map()["200"]
+	require.NotNil(t, response)
+	content := response.Value.Content.Get("application/json")
+	require.NotNil(t, content)
+	require.NotNil(t, content.Schema)
+	require.NotNil(t, content.Schema.Value)
+	return content.Schema
 }
 
 func preprocessToValue(entryPath string, out any) error {

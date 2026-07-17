@@ -2066,6 +2066,23 @@ If `items.yaml` is `[111, 222]`, result is `[val1, [111, 222], val2]`.
 - include cycles are rejected with the include chain in the error
 - include paths resolving outside the entry spec root directory are rejected
 
+Relative `$ref` values written inside an included file are resolved from that included file's location, not from the entry document that pulled it in. For example, if `spec.yaml` contains `paths: !include ./some_dir/paths.yaml` and `some_dir/paths.yaml` contains `$ref: ./components/pet.yaml`, that reference resolves to `some_dir/components/pet.yaml`.
+
+```yaml
+# spec.yaml
+paths: !include ./some_dir/paths.yaml
+
+# some_dir/paths.yaml
+/pets:
+  get:
+    responses:
+      '200':
+        content:
+          application/json:
+            schema:
+              $ref: ./components/pet.yaml
+```
+
 ## Splitting large OpenAPI specs across multiple packages (aka "Import Mapping" or "external references")
 <a name=import-mapping></a>
 

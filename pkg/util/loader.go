@@ -232,6 +232,7 @@ func expandIncludesInMap(node *yaml.Node, currentFile string, rootDir string, st
 			return err
 		}
 		resultPairs = append(resultPairs, keyNode, valueNode)
+	}
 
 	if len(mergedKeys) == 0 {
 		node.Content = resultPairs
@@ -266,9 +267,7 @@ func expandIncludesInArray(node *yaml.Node, currentFile string, rootDir string, 
 			if includedNode.Kind != yaml.SequenceNode {
 				return fmt.Errorf("failed to process !include_array in %q for %q: included value must be an array", currentFile, includePath)
 			}
-			for _, includedItem := range includedNode.Content {
-				expandedItems = append(expandedItems, includedItem)
-			}
+			expandedItems = append(expandedItems, includedNode.Content...)
 			continue
 		}
 
@@ -276,6 +275,7 @@ func expandIncludesInArray(node *yaml.Node, currentFile string, rootDir string, 
 			return err
 		}
 		expandedItems = append(expandedItems, itemNode)
+	}
 
 	node.Content = expandedItems
 	return nil
@@ -304,6 +304,10 @@ func loadIncludedNode(includeNode *yaml.Node, currentFile string, rootDir string
 	includedDocument, err := loadYAMLDocument(resolvedPath)
 	if err != nil {
 		return nil, resolvedPath, fmt.Errorf("failed to include %q in %q: %w", resolvedPath, currentFile, err)
+	}
+
+	if err := rebaseIncludedRelativeRefs(includedDocument.Content[0], resolvedPath, rootDir); err != nil {
+		return nil, resolvedPath, err
 	}
 
 	if err := expandIncludes(includedDocument, resolvedPath, rootDir, append(stack, resolvedPath)); err != nil {
@@ -361,4 +365,66 @@ func cloneYAMLNode(node *yaml.Node) *yaml.Node {
 	}
 
 	return &cloned
+}
+
+// rebaseIncludedRelativeRefs rewrites relative external $ref values found in an
+// included file so they keep resolving from that file after the YAML tree is
+// flattened back into the entry document.
+func rebaseIncludedRelativeRefs(node *yaml.Node, currentFile string, rootDir string) error {
+	if node == nil {
+		return nil
+	}
+
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			keyNode := node.Content[i]
+			valueNode := node.Content[i+1]
+			if keyNode.Kind == yaml.ScalarNode && keyNode.Value == "$ref" {
+				if err := rebaseIncludedRelativeRefValue(valueNode, currentFile, rootDir); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, child := range node.Content {
+		if err := rebaseIncludedRelativeRefs(child, currentFile, rootDir); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func rebaseIncludedRelativeRefValue(node *yaml.Node, currentFile string, rootDir string) error {
+	if node.Kind != yaml.ScalarNode {
+		return nil
+	}
+
+	refValue := strings.TrimSpace(node.Value)
+	if refValue == "" || strings.HasPrefix(refValue, "#") {
+		return nil
+	}
+
+	refURI, err := url.Parse(refValue)
+	if err != nil {
+		return fmt.Errorf("failed to parse $ref %q in %q: %w", refValue, currentFile, err)
+	}
+	if refURI.Scheme != "" || refURI.Host != "" || refURI.Path == "" || path.IsAbs(refURI.Path) || filepath.IsAbs(refURI.Path) {
+		return nil
+	}
+
+	targetPath := filepath.Clean(filepath.Join(filepath.Dir(currentFile), filepath.FromSlash(refURI.Path)))
+	realRootDir := rootDir
+	if resolvedRoot, err := filepath.EvalSymlinks(rootDir); err == nil {
+		realRootDir = resolvedRoot
+	}
+	rebasedPath, err := filepath.Rel(realRootDir, targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to rewrite $ref %q in %q: %w", refValue, currentFile, err)
+	}
+
+	refURI.Path = filepath.ToSlash(rebasedPath)
+	node.Value = refURI.String()
+	return nil
 }
