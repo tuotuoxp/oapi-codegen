@@ -291,7 +291,7 @@ func loadIncludedNode(includeNode *yaml.Node, currentFile string, rootDir string
 		return nil, "", fmt.Errorf("invalid include in %q: include target is empty", currentFile)
 	}
 
-	resolvedPath, err := resolveIncludePath(currentFile, rootDir, includeTarget)
+	resolvedPath, err := resolveIncludePath(currentFile, includeTarget)
 	if err != nil {
 		return nil, "", err
 	}
@@ -317,7 +317,7 @@ func loadIncludedNode(includeNode *yaml.Node, currentFile string, rootDir string
 	return cloneYAMLNode(includedDocument.Content[0]), resolvedPath, nil
 }
 
-func resolveIncludePath(currentFile string, rootDir string, includeTarget string) (string, error) {
+func resolveIncludePath(currentFile string, includeTarget string) (string, error) {
 	includePath := includeTarget
 	if !path.IsAbs(includeTarget) && !filepath.IsAbs(includeTarget) {
 		includePath = filepath.Join(filepath.Dir(currentFile), includeTarget)
@@ -332,20 +332,8 @@ func resolveIncludePath(currentFile string, rootDir string, includeTarget string
 		includePath = absPath
 	}
 
-	realRootDir, err := filepath.EvalSymlinks(rootDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve specification root %q: %w", rootDir, err)
-	}
 	if resolved, err := filepath.EvalSymlinks(includePath); err == nil {
 		includePath = resolved
-	}
-
-	relativeToRoot, err := filepath.Rel(realRootDir, includePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve include path %q in %q: %w", includeTarget, currentFile, err)
-	}
-	if relativeToRoot == ".." || strings.HasPrefix(relativeToRoot, fmt.Sprintf("..%c", filepath.Separator)) {
-		return "", fmt.Errorf("include path %q in %q resolves outside specification root %q", includeTarget, currentFile, realRootDir)
 	}
 
 	return includePath, nil

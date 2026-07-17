@@ -2062,9 +2062,11 @@ If `items.yaml` is `[111, 222]`, result is `[val1, [111, 222], val2]`.
 ### Path resolution and safety
 
 - relative include paths are resolved from the including file directory
+- absolute paths follow OS/filesystem rules
+- includes may reference files anywhere on the filesystem, including outside the entry spec's directory
+- do not process untrusted specs with includes enabled (includes can read arbitrary local files)
 - nested includes are supported
 - include cycles are rejected with the include chain in the error
-- include paths resolving outside the entry spec root directory are rejected
 
 Relative `$ref` values written inside an included file are resolved from that included file's location, not from the entry document that pulled it in. For example, if `spec.yaml` contains `paths: !include ./some_dir/paths.yaml` and `some_dir/paths.yaml` contains `$ref: ./components/pet.yaml`, that reference resolves to `some_dir/components/pet.yaml`.
 

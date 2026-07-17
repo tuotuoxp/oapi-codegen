@@ -171,18 +171,21 @@ func TestPreprocessSwaggerIncludes(t *testing.T) {
 		require.ErrorContains(t, err, "does-not-exist.yaml")
 	})
 
-	t.Run("include path traversal outside root is blocked", func(t *testing.T) {
-		fixtureRoot := t.TempDir()
-		entryPath := writeFixtureFilesInDir(t, fixtureRoot, map[string]string{
-			"spec.yaml": "root: !include ../outside.yaml\n",
-		}, "spec.yaml")
-		writeFixtureFilesInDir(t, filepath.Dir(fixtureRoot), map[string]string{
-			"outside.yaml": "secret: true\n",
-		}, "outside.yaml")
+	t.Run("include path outside root is allowed", func(t *testing.T) {
+		parentDir := t.TempDir()
+		outsideDir := filepath.Join(parentDir, "outside")
+		specDir := filepath.Join(parentDir, "spec")
+		require.NoError(t, os.MkdirAll(outsideDir, 0o755))
+		require.NoError(t, os.MkdirAll(specDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(outsideDir, "shared.yaml"), []byte("shared: true\n"), 0o644))
+		entryPath := filepath.Join(specDir, "spec.yaml")
+		require.NoError(t, os.WriteFile(entryPath, []byte("root: !include ../outside/shared.yaml\n"), 0o644))
 
-		_, err := preprocessSwaggerIncludes(entryPath)
-		require.Error(t, err)
-		require.ErrorContains(t, err, "outside specification root")
+		var got map[string]any
+		require.NoError(t, preprocessToValue(entryPath, &got))
+		require.Equal(t, map[string]any{
+			"root": map[string]any{"shared": true},
+		}, got)
 	})
 }
 
