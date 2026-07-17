@@ -328,12 +328,20 @@ func resolveIncludePath(currentFile string, rootDir string, includeTarget string
 		includePath = absPath
 	}
 
-	relativeToRoot, err := filepath.Rel(rootDir, includePath)
+	realRootDir, err := filepath.EvalSymlinks(rootDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve specification root %q: %w", rootDir, err)
+	}
+	if resolved, err := filepath.EvalSymlinks(includePath); err == nil {
+		includePath = resolved
+	}
+
+	relativeToRoot, err := filepath.Rel(realRootDir, includePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve include path %q in %q: %w", includeTarget, currentFile, err)
 	}
 	if relativeToRoot == ".." || strings.HasPrefix(relativeToRoot, fmt.Sprintf("..%c", filepath.Separator)) {
-		return "", fmt.Errorf("include path %q in %q resolves outside specification root %q", includeTarget, currentFile, rootDir)
+		return "", fmt.Errorf("include path %q in %q resolves outside specification root %q", includeTarget, currentFile, realRootDir)
 	}
 
 	return includePath, nil
