@@ -955,21 +955,11 @@ func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
 
 	// We can process the schema through the generic schema processor
 	if param.Schema != nil {
-		goSchema, err := GenerateGoSchema(param.Schema, path)
-		if err != nil {
-			return Schema{}, err
+		schemaRef := param.Schema
+		if resolvedSchemaRef, ok := resolveNestedParameterSchemaRef(param.Schema); ok {
+			schemaRef = resolvedSchemaRef
 		}
-
-		if goSchema.GoType == "interface{}" {
-			if resolvedSchemaRef, ok := resolveNestedParameterSchemaRef(param.Schema); ok {
-				resolvedSchema, err := GenerateGoSchema(resolvedSchemaRef, path)
-				if err == nil {
-					return resolvedSchema, nil
-				}
-			}
-		}
-
-		return goSchema, nil
+		return GenerateGoSchema(schemaRef, path)
 	}
 
 	// At this point, we have a content type. We know how to deal with
@@ -997,7 +987,7 @@ func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
 }
 
 func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.SchemaRef, bool) {
-	if sref == nil || sref.Ref == "" || globalState.options.InputSpec == "" {
+	if sref == nil || globalState.options.InputSpec == "" {
 		return nil, false
 	}
 
@@ -1005,37 +995,79 @@ func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.Schema
 	if err != nil {
 		return nil, false
 	}
-	refNode, refFile, err := resolver.resolveRefNode(resolver.rootPath, sref.Ref, map[string]bool{})
-	if err != nil {
+	effective, err := resolver.resolveSchemaRef(resolver.rootPath, sref, map[string]bool{})
+	if err != nil || effective.Type == nil || effective.HasAllOf || effective.HasAnyOf || effective.HasOneOf || effective.HasNot {
 		return nil, false
 	}
-		effective, err := resolver.resolveSchema(refFile, refNode, map[string]bool{})
-		if err != nil || effective.Type == nil || effective.HasAllOf || effective.HasAnyOf || effective.HasOneOf || effective.HasNot {
-			return nil, false
-		}
-		switch *effective.Type {
-		case "string", "integer", "number", "boolean":
-			// ok
-		default:
-			return nil, false
-		}
+	switch *effective.Type {
+	case "string", "integer", "number", "boolean":
+		// ok
+	default:
+		return nil, false
+	}
 
-		if sref.Value != nil && sref.Value.Type != nil && len(sref.Value.Type.Slice()) > 0 {
-			return nil, false
-		}
+	if sref.Value != nil && sref.Value.Type != nil && len(sref.Value.Type.Slice()) > 0 {
+		return nil, false
+	}
 
 	clonedRef := *sref
+	clonedRef.Ref = ""
 	clonedValue := openapi3.NewSchema()
 	if sref.Value != nil {
 		cloned := *sref.Value
 		clonedValue = &cloned
 	}
-	resolvedType := openapi3.Types{*effective.Type}
-	clonedValue.Type = &resolvedType
+	if clonedValue.Type == nil || len(clonedValue.Type.Slice()) == 0 {
+		resolvedType := openapi3.Types{*effective.Type}
+		clonedValue.Type = &resolvedType
+	}
 	if clonedValue.Format == "" && effective.Format != nil {
 		clonedValue.Format = *effective.Format
 	}
+	if clonedValue.MinLength == 0 && effective.MinLength != nil {
+		clonedValue.MinLength = *effective.MinLength
+	}
+	if clonedValue.MaxLength == nil && effective.MaxLength != nil {
+		maxLength := *effective.MaxLength
+		clonedValue.MaxLength = &maxLength
+	}
+	if clonedValue.Pattern == "" && effective.Pattern != nil {
+		clonedValue.Pattern = *effective.Pattern
+	}
+	if len(clonedValue.Enum) == 0 && effective.HasEnum {
+		clonedValue.Enum = append([]any(nil), effective.Enum...)
+	}
+	if clonedValue.Min == nil && effective.Minimum != nil {
+		minimum := *effective.Minimum
+		clonedValue.Min = &minimum
+		if effective.ExclusiveMinimum != nil {
+			clonedValue.ExclusiveMin = *effective.ExclusiveMinimum
+		}
+	}
+	if clonedValue.Max == nil && effective.Maximum != nil {
+		maximum := *effective.Maximum
+		clonedValue.Max = &maximum
+		if effective.ExclusiveMaximum != nil {
+			clonedValue.ExclusiveMax = *effective.ExclusiveMaximum
+		}
+	}
 	clonedRef.Value = clonedValue
+	if effective.XGoType != nil || effective.XGoTypeImport != nil || effective.XGoRef != nil {
+		clonedExt := map[string]any{}
+		for k, v := range clonedRef.Extensions {
+			clonedExt[k] = v
+		}
+		if _, ok := clonedExt[extPropGoType]; !ok && effective.XGoType != nil {
+			clonedExt[extPropGoType] = *effective.XGoType
+		}
+		if _, ok := clonedExt[extPropGoImport]; !ok && effective.XGoTypeImport != nil {
+			clonedExt[extPropGoImport] = effective.XGoTypeImport
+		}
+		if _, ok := clonedExt[extPropGoRef]; !ok && effective.XGoRef != nil {
+			clonedExt[extPropGoRef] = effective.XGoRef
+		}
+		clonedRef.Extensions = clonedExt
+	}
 	return &clonedRef, true
 }
 

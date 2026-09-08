@@ -557,3 +557,123 @@ func TestParamToGoTypeResolvesNestedSchemaRefs(t *testing.T) {
 	assert.Equal(t, "string", typeByName["X-Trace"])
 	assert.Equal(t, "interface{}", typeByName["passthrough"])
 }
+
+func TestResolveNestedParameterSchemaRef(t *testing.T) {
+	specPath := "test_specs/recursive-parameter-refs/spec.yaml"
+	swagger, err := util.LoadSwagger(specPath)
+	require.NoError(t, err)
+
+	oldInputSpec := globalState.options.InputSpec
+	t.Cleanup(func() {
+		globalState.options.InputSpec = oldInputSpec
+	})
+	globalState.options.InputSpec = specPath
+
+	paramByPathAndName := func(path, name string) *openapi3.Parameter {
+		t.Helper()
+		for _, p := range swagger.Paths.Value(path).Get.Parameters {
+			if p.Value != nil && p.Value.Name == name {
+				return p.Value
+			}
+		}
+		t.Fatalf("parameter %q not found for path %q", name, path)
+		return nil
+	}
+
+	tests := []struct {
+		name         string
+		param        *openapi3.Parameter
+		wantResolved bool
+		wantGoType   string
+		assertion    func(t *testing.T, sref *openapi3.SchemaRef)
+	}{
+		{
+			name:         "two level local chain",
+			param:        paramByPathAndName("/two-level/{id}", "id"),
+			wantResolved: true,
+			wantGoType:   "int64",
+			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
+				require.NotNil(t, sref.Value)
+				require.NotNil(t, sref.Value.Type)
+				assert.Equal(t, openapi3.TypeInteger, sref.Value.Type.Slice()[0])
+				assert.Equal(t, "int64", sref.Value.Format)
+			},
+		},
+		{
+			name:         "three level local chain",
+			param:        paramByPathAndName("/three-level", "q"),
+			wantResolved: true,
+			wantGoType:   "string",
+			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
+				require.NotNil(t, sref.Value)
+				require.NotNil(t, sref.Value.Type)
+				assert.Equal(t, openapi3.TypeString, sref.Value.Type.Slice()[0])
+			},
+		},
+		{
+			name:         "mixed chain preserves constraints",
+			param:        paramByPathAndName("/mixed", "code"),
+			wantResolved: true,
+			wantGoType:   "string",
+			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
+				require.NotNil(t, sref.Value)
+				require.NotNil(t, sref.Value.Type)
+				assert.Equal(t, openapi3.TypeString, sref.Value.Type.Slice()[0])
+				assert.Equal(t, uint64(3), sref.Value.MinLength)
+				require.NotNil(t, sref.Value.MaxLength)
+				assert.Equal(t, uint64(8), *sref.Value.MaxLength)
+				assert.Equal(t, "^[a-z]+$", sref.Value.Pattern)
+				assert.Equal(t, []any{"foo", "bar"}, sref.Value.Enum)
+			},
+		},
+		{
+			name:         "cycle falls back",
+			param:        paramByPathAndName("/cycle", "loop"),
+			wantResolved: false,
+			wantGoType:   "interface{}",
+		},
+		{
+			name:         "external multi level chain",
+			param:        paramByPathAndName("/external/{externalId}", "externalId"),
+			wantResolved: true,
+			wantGoType:   "string",
+			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
+				require.NotNil(t, sref.Value)
+				require.NotNil(t, sref.Value.Type)
+				assert.Equal(t, openapi3.TypeString, sref.Value.Type.Slice()[0])
+			},
+		},
+		{
+			name:         "single level regression",
+			param:        paramByPathAndName("/single-level", "trace"),
+			wantResolved: true,
+			wantGoType:   "string",
+			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
+				require.NotNil(t, sref.Value)
+				require.NotNil(t, sref.Value.Type)
+				assert.Equal(t, openapi3.TypeString, sref.Value.Type.Slice()[0])
+			},
+		},
+		{
+			name:         "untyped regression remains interface",
+			param:        paramByPathAndName("/unknown", "passthrough"),
+			wantResolved: false,
+			wantGoType:   "interface{}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved, ok := resolveNestedParameterSchemaRef(tt.param.Schema)
+			assert.Equal(t, tt.wantResolved, ok)
+			if tt.assertion != nil {
+				require.True(t, ok)
+				tt.assertion(t, resolved)
+			}
+
+			got, err := paramToGoType(tt.param, []string{"Params", tt.param.Name})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantGoType, got.GoType)
+		})
+	}
+}

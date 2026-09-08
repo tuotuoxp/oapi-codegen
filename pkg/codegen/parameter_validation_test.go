@@ -121,9 +121,10 @@ func TestResolveParameterValidationPlanForParameterRefAndCycle(t *testing.T) {
 	globalState.options.InputSpec = cycleSpecPath
 	globalState.spec = cycleSwagger
 	cycleParam := cycleSwagger.Paths.Value("/cycle").Get.Parameters[0]
-	_, err = DescribeParameters(openapi3.Parameters{cycleParam}, []string{"GetCycleParams"}, []string{"paths", "/cycle", "get", "parameters"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "reference cycle")
+	params, err = DescribeParameters(openapi3.Parameters{cycleParam}, []string{"GetCycleParams"}, []string{"paths", "/cycle", "get", "parameters"})
+	require.NoError(t, err)
+	require.Len(t, params, 1)
+	assert.False(t, params[0].Validation.HasValidation())
 }
 
 func TestGenerateServerParameterValidationCode(t *testing.T) {

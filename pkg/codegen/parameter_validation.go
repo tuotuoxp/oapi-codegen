@@ -218,6 +218,14 @@ type parameterValidationLookupError struct {
 	err error
 }
 
+type parameterValidationCycleError struct {
+	ref string
+}
+
+func (e *parameterValidationCycleError) Error() string {
+	return fmt.Sprintf("parameter schema reference cycle detected at %s", e.ref)
+}
+
 func (e *parameterValidationLookupError) Error() string {
 	return e.err.Error()
 }
@@ -265,6 +273,10 @@ func (r *parameterValidationResolver) resolvePlan(paramRef *openapi3.ParameterRe
 	}
 	effective, err := r.resolveSchema(schemaFile, schemaNode, map[string]bool{})
 	if err != nil {
+		var cycleErr *parameterValidationCycleError
+		if errors.As(err, &cycleErr) {
+			return buildParameterValidationPlanFromLoadedSchema(paramRef.Value.Schema)
+		}
 		return ParameterValidationPlan{}, err
 	}
 	return buildParameterValidationPlan(effective)
@@ -443,6 +455,133 @@ func (r *parameterValidationResolver) resolveSchema(currentFile string, node *ya
 	return local.mergedOver(referenced), nil
 }
 
+func (r *parameterValidationResolver) resolveSchemaRef(currentFile string, sref *openapi3.SchemaRef, seen map[string]bool) (parameterValidationSchema, error) {
+	if sref == nil {
+		return parameterValidationSchema{}, nil
+	}
+	node, err := parameterValidationSchemaNodeFromSchemaRef(sref)
+	if err != nil {
+		return parameterValidationSchema{}, err
+	}
+	return r.resolveSchema(currentFile, node, seen)
+}
+
+func parameterValidationSchemaNodeFromSchemaRef(sref *openapi3.SchemaRef) (*yaml.Node, error) {
+	node := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	addEncoded := func(key string, value any) error {
+		valueNode := &yaml.Node{}
+		if err := valueNode.Encode(value); err != nil {
+			return err
+		}
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+			valueNode,
+		)
+		return nil
+	}
+	addNode := func(key string, valueNode *yaml.Node) {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+			valueNode,
+		)
+	}
+
+	if sref.Ref != "" {
+		if err := addEncoded("$ref", sref.Ref); err != nil {
+			return nil, err
+		}
+	}
+	if sref.Value == nil {
+		return node, nil
+	}
+
+	schema := sref.Value
+	if schema.Type != nil {
+		if types := schema.Type.Slice(); len(types) > 0 {
+			if err := addEncoded("type", types[0]); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if schema.Format != "" {
+		if err := addEncoded("format", schema.Format); err != nil {
+			return nil, err
+		}
+	}
+	if schema.MinLength != 0 {
+		if err := addEncoded("minLength", schema.MinLength); err != nil {
+			return nil, err
+		}
+	}
+	if schema.MaxLength != nil {
+		if err := addEncoded("maxLength", *schema.MaxLength); err != nil {
+			return nil, err
+		}
+	}
+	if schema.Pattern != "" {
+		if err := addEncoded("pattern", schema.Pattern); err != nil {
+			return nil, err
+		}
+	}
+	if len(schema.Enum) > 0 {
+		if err := addEncoded("enum", schema.Enum); err != nil {
+			return nil, err
+		}
+	}
+	if schema.Min != nil {
+		if err := addEncoded("minimum", *schema.Min); err != nil {
+			return nil, err
+		}
+		if schema.ExclusiveMin {
+			if err := addEncoded("exclusiveMinimum", schema.ExclusiveMin); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if schema.Max != nil {
+		if err := addEncoded("maximum", *schema.Max); err != nil {
+			return nil, err
+		}
+		if schema.ExclusiveMax {
+			if err := addEncoded("exclusiveMaximum", schema.ExclusiveMax); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	extensions := combinedSchemaExtensions(sref)
+	if v, ok := extensions[extPropGoType]; ok && v != nil {
+		if err := addEncoded(extPropGoType, v); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := extensions[extPropGoImport]; ok && v != nil {
+		if err := addEncoded(extPropGoImport, v); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := extensions[extPropGoRef]; ok && v != nil {
+		if err := addEncoded(extPropGoRef, v); err != nil {
+			return nil, err
+		}
+	}
+
+	if len(schema.AllOf) > 0 {
+		addNode("allOf", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
+	}
+	if len(schema.AnyOf) > 0 {
+		addNode("anyOf", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
+	}
+	if len(schema.OneOf) > 0 {
+		addNode("oneOf", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"})
+	}
+	if schema.Not != nil {
+		addNode("not", &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"})
+	}
+
+	return node, nil
+}
+
 func (r *parameterValidationResolver) resolveRefNode(currentFile string, ref string, seen map[string]bool) (*yaml.Node, string, error) {
 	targetFile, fragment, err := resolveYAMLReference(currentFile, ref)
 	if err != nil {
@@ -450,7 +589,7 @@ func (r *parameterValidationResolver) resolveRefNode(currentFile string, ref str
 	}
 	visitKey := targetFile + "#" + fragment
 	if seen[visitKey] {
-		return nil, "", fmt.Errorf("parameter schema reference cycle detected at %s", ref)
+		return nil, "", &parameterValidationCycleError{ref: ref}
 	}
 	seen[visitKey] = true
 

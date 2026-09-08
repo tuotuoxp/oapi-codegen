@@ -512,5 +512,54 @@ func TestNestedParameterRefsAndParameterTags(t *testing.T) {
 	assert.Contains(t, code, "Name string `json:\"name\"`")
 }
 
+func TestRecursiveParameterRefsGenerateConcreteTypes(t *testing.T) {
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			ChiServer: true,
+			Models:    true,
+		},
+		InputSpec: "test_specs/recursive-parameter-refs/spec.yaml",
+	}
+	swagger, err := util.LoadSwagger(opts.InputSpec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	require.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	assert.Contains(t, code, "type ReusableThreeLevel = string")
+	assert.Contains(t, code, "type ReusableExternal = string")
+
+	assert.Contains(t, code, "type GetTwoLevelParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Id\s+int64\b`), code)
+	assert.Contains(t, code, "var id int64")
+	assert.NotContains(t, code, "var id interface{}")
+
+	assert.Contains(t, code, "type GetThreeLevelParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Q\s+string\b`), code)
+
+	assert.Contains(t, code, "type GetMixedParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Code\s+string\b`), code)
+	assert.Contains(t, code, `validateParamString("code", string(params.Code), 3, true, 8, true, "^[a-z]+$", true, []string{"foo", "bar"}, true)`)
+
+	assert.Contains(t, code, "type GetExternalParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*ExternalId\s+string\b`), code)
+	assert.Contains(t, code, "var externalId string")
+	assert.NotContains(t, code, "var externalId interface{}")
+
+	assert.Contains(t, code, "type GetSingleLevelParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Trace\s+string\b`), code)
+
+	assert.Contains(t, code, "type GetCycleParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Loop\s+interface\{\}`), code)
+
+	assert.Contains(t, code, "type GetUnknownParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Passthrough\s+interface\{\}`), code)
+}
+
 //go:embed test_spec.yaml
 var testOpenAPIDefinition string

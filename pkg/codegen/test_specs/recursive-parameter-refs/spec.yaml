@@ -1,0 +1,146 @@
+openapi: 3.0.3
+info:
+  title: recursive parameter refs
+  version: "1.0"
+paths:
+  /two-level/{id}:
+    get:
+      operationId: getTwoLevel
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/TwoLevelTop'
+      responses:
+        "200":
+          description: ok
+  /three-level:
+    get:
+      operationId: getThreeLevel
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/ThreeLevelTop'
+      responses:
+        "200":
+          description: ok
+  /mixed:
+    get:
+      operationId: getMixed
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/MixedTop'
+      responses:
+        "200":
+          description: ok
+  /cycle:
+    get:
+      operationId: getCycle
+      parameters:
+        - name: loop
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/CycleA'
+      responses:
+        "200":
+          description: ok
+  /external/{externalId}:
+    get:
+      operationId: getExternal
+      parameters:
+        - name: externalId
+          in: path
+          required: true
+          schema:
+            $ref: ./schemas/external-top.yaml
+      responses:
+        "200":
+          description: ok
+  /single-level:
+    get:
+      operationId: getSingleLevel
+      parameters:
+        - name: trace
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/SingleLevel'
+      responses:
+        "200":
+          description: ok
+  /unknown:
+    get:
+      operationId: getUnknown
+      parameters:
+        - name: passthrough
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/UntypedTop'
+      responses:
+        "200":
+          description: ok
+  /reusable:
+    get:
+      operationId: getReusable
+      parameters:
+        - $ref: '#/components/parameters/ReusableThreeLevel'
+        - $ref: '#/components/parameters/ReusableExternal'
+      responses:
+        "200":
+          description: ok
+components:
+  parameters:
+    ReusableThreeLevel:
+      name: reusable
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/ThreeLevelTop'
+    ReusableExternal:
+      name: externalCode
+      in: query
+      required: true
+      schema:
+        $ref: ./schemas/external-top.yaml
+  schemas:
+    TwoLevelTop:
+      $ref: '#/components/schemas/TwoLevelBase'
+    TwoLevelBase:
+      type: integer
+      format: int64
+    ThreeLevelTop:
+      $ref: '#/components/schemas/ThreeLevelMid'
+    ThreeLevelMid:
+      $ref: '#/components/schemas/ThreeLevelBase'
+    ThreeLevelBase:
+      type: string
+    MixedTop:
+      $ref: '#/components/schemas/MixedMid'
+      minLength: 3
+    MixedMid:
+      $ref: '#/components/schemas/MixedBase'
+      pattern: '^[a-z]+$'
+    MixedBase:
+      type: string
+      maxLength: 8
+      enum:
+        - foo
+        - bar
+    CycleA:
+      $ref: '#/components/schemas/CycleB'
+    CycleB:
+      $ref: '#/components/schemas/CycleA'
+    SingleLevel:
+      $ref: '#/components/schemas/SingleLevelBase'
+    SingleLevelBase:
+      type: string
+    UntypedTop:
+      description: stays untyped
