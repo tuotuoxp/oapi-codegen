@@ -1,0 +1,15 @@
+openapi: 3.0.3
+info:
+  title: parameter validation external refs
+  version: "1.0"
+paths:
+  /external-ref:
+    get:
+      operationId: getExternalRef
+      parameters:
+        - $ref: ./external-ref-params.yaml#/components/parameters/ExternalName
+      responses:
+        "200":
+          description: ok
+  /external-inline:
+    $ref: ./external-ref-paths.yaml#/paths/~1external-inline

@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info:
+  title: external paths
+  version: "1.0"
+paths:
+  /external-inline:
+    get:
+      operationId: getExternalInline
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 3
+            pattern: ^[A-Z]+$
+      responses:
+        "200":
+          description: ok

@@ -1,7 +1,10 @@
 package codegen
 
 import (
+	"bytes"
 	"go/format"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -201,12 +204,77 @@ func TestResolveParameterValidationFallsBackWhenSourceLookupMismatches(t *testin
 	require.NotNil(t, resolver)
 
 	paramRef := swagger.Paths.Value("/different").Get.Parameters[0]
-	plan, err := resolver.resolvePlan(paramRef, []string{"paths", "/missing", "get", "parameters"}, 0)
+	stderr := captureStderr(t, func() {
+		plan, err := resolver.resolvePlan(paramRef, []string{"paths", "/missing", "get", "parameters"}, 0)
+		require.NoError(t, err)
+		assert.True(t, plan.HasValidation())
+		assert.Equal(t, uint64(1), plan.MinLength)
+		assert.False(t, plan.HasMaxLength)
+		assert.Equal(t, "^[a-z]+$", plan.Pattern)
+	})
+	assert.Contains(t, stderr, `Warning: failed to resolve original parameter validation source for "q" in "query"`)
+}
+
+func TestResolveParameterValidationUsesOriginalSourceWhenLocalPathExists(t *testing.T) {
+	specPath := "test_specs/parameter-validation/spec.yaml"
+	swagger, err := util.LoadSwagger(specPath)
 	require.NoError(t, err)
-	assert.True(t, plan.HasValidation())
-	assert.Equal(t, uint64(1), plan.MinLength)
-	assert.False(t, plan.HasMaxLength)
-	assert.Equal(t, "^[a-z]+$", plan.Pattern)
+
+	resolver, err := newParameterValidationResolver(specPath)
+	require.NoError(t, err)
+	require.NotNil(t, resolver)
+
+	paramRef := swagger.Paths.Value("/different").Get.Parameters[0]
+	stderr := captureStderr(t, func() {
+		plan, err := resolver.resolvePlan(paramRef, []string{"paths", "/different", "get", "parameters"}, 0)
+		require.NoError(t, err)
+		assert.True(t, plan.HasValidation())
+		assert.Equal(t, uint64(1), plan.MinLength)
+		assert.True(t, plan.HasMaxLength)
+		assert.Equal(t, uint64(5), plan.MaxLength)
+		assert.Equal(t, "^[a-z]+$", plan.Pattern)
+	})
+	assert.NotContains(t, stderr, `Warning: failed to resolve original parameter validation source`)
+}
+
+func TestResolveParameterValidationDoesNotWarnForExternalParameterRef(t *testing.T) {
+	specPath := "test_specs/parameter-validation/external-ref-main.yaml"
+	swagger, err := util.LoadSwagger(specPath)
+	require.NoError(t, err)
+
+	resolver, err := newParameterValidationResolver(specPath)
+	require.NoError(t, err)
+	require.NotNil(t, resolver)
+
+	paramRef := swagger.Paths.Value("/external-ref").Get.Parameters[0]
+	stderr := captureStderr(t, func() {
+		plan, err := resolver.resolvePlan(paramRef, []string{"paths", "/external-ref", "get", "parameters"}, 0)
+		require.NoError(t, err)
+		assert.True(t, plan.HasValidation())
+		assert.Equal(t, uint64(2), plan.MinLength)
+		assert.Equal(t, "^[a-z]+$", plan.Pattern)
+	})
+	assert.NotContains(t, stderr, `Warning: failed to resolve original parameter validation source`)
+}
+
+func TestResolveParameterValidationDoesNotWarnForExternalPathSourceFallback(t *testing.T) {
+	specPath := "test_specs/parameter-validation/external-ref-main.yaml"
+	swagger, err := util.LoadSwagger(specPath)
+	require.NoError(t, err)
+
+	resolver, err := newParameterValidationResolver(specPath)
+	require.NoError(t, err)
+	require.NotNil(t, resolver)
+
+	paramRef := swagger.Paths.Value("/external-inline").Get.Parameters[0]
+	stderr := captureStderr(t, func() {
+		plan, err := resolver.resolvePlan(paramRef, []string{"paths", "/external-inline", "get", "parameters"}, 0)
+		require.NoError(t, err)
+		assert.True(t, plan.HasValidation())
+		assert.Equal(t, uint64(3), plan.MinLength)
+		assert.Equal(t, "^[A-Z]+$", plan.Pattern)
+	})
+	assert.NotContains(t, stderr, `Warning: failed to resolve original parameter validation source`)
 }
 
 func TestGenerateServerParameterValidationCodeWithIncludeArrayHeaderParameter(t *testing.T) {
@@ -265,4 +333,29 @@ func findParameterRefByInAndName(t *testing.T, params openapi3.Parameters, in st
 
 	t.Fatalf("parameter %s in %s not found", name, in)
 	return nil
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+
+	originalStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = w
+
+	done := make(chan string, 1)
+	go func() {
+		var b bytes.Buffer
+		_, _ = io.Copy(&b, r)
+		done <- b.String()
+	}()
+
+	fn()
+
+	require.NoError(t, w.Close())
+	os.Stderr = originalStderr
+
+	output := <-done
+	require.NoError(t, r.Close())
+	return output
 }

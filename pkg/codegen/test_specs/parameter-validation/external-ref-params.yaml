@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info:
+  title: external parameters
+  version: "1.0"
+components:
+  parameters:
+    ExternalName:
+      name: name
+      in: query
+      required: false
+      schema:
+        type: string
+        minLength: 2
+        pattern: ^[a-z]+$
