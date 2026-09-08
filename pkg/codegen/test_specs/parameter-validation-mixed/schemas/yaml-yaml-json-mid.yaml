@@ -1,0 +1,2 @@
+$ref: ./yaml-yaml-json-base.json
+pattern: '^[a-z0-9]+$'

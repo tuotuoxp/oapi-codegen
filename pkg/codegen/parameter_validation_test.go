@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -299,6 +300,216 @@ func TestGenerateServerParameterValidationCodeWithIncludeArrayHeaderParameter(t 
 	require.NoError(t, err)
 
 	assert.Contains(t, code, `validateParamString("X-Header", string(XHeader), 3, true, 8, true, "^[A-Z]+$", true, []string{"FOO", "BAR"}, true)`)
+}
+
+func TestMixedFormatParameterRefsResolveTypeAndValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		specPath       string
+		operationPath  string
+		paramName      string
+		expectedGoType string
+		assertion      func(t *testing.T, got ParameterDefinition)
+	}{
+		{
+			name:           "yaml path to json chain string",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/cross-format-string",
+			paramName:      "code",
+			expectedGoType: "string",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeString, got.Validation.Kind)
+				assert.Equal(t, uint64(3), got.Validation.MinLength)
+				assert.Equal(t, uint64(8), got.Validation.MaxLength)
+				assert.Equal(t, "^[a-z]+$", got.Validation.Pattern)
+			},
+		},
+		{
+			name:           "yaml path to json chain integer",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/cross-format-int",
+			paramName:      "count",
+			expectedGoType: "int64",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeInteger, got.Validation.Kind)
+				assert.Equal(t, "2", got.Validation.IntegerMinimum)
+				assert.Equal(t, "6", got.Validation.IntegerMaximum)
+				assert.True(t, got.Validation.ExclusiveIntegerMinimum)
+			},
+		},
+		{
+			name:           "yaml yaml json matrix",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/yaml-yaml-json",
+			paramName:      "nested",
+			expectedGoType: "string",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeString, got.Validation.Kind)
+				assert.Equal(t, uint64(2), got.Validation.MinLength)
+				assert.Equal(t, uint64(10), got.Validation.MaxLength)
+				assert.Equal(t, "^[a-z0-9]+$", got.Validation.Pattern)
+			},
+		},
+		{
+			name:           "yaml json yaml matrix",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/yaml-json-yaml",
+			paramName:      "mixed",
+			expectedGoType: "string",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeString, got.Validation.Kind)
+				assert.Equal(t, uint64(4), got.Validation.MinLength)
+				assert.Equal(t, uint64(9), got.Validation.MaxLength)
+				assert.Equal(t, "^[A-Z]+$", got.Validation.Pattern)
+			},
+		},
+		{
+			name:           "json yaml json matrix",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.json",
+			operationPath:  "/json-yaml-json",
+			paramName:      "amount",
+			expectedGoType: "int64",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeInteger, got.Validation.Kind)
+				assert.Equal(t, "7", got.Validation.IntegerMinimum)
+				assert.Equal(t, "15", got.Validation.IntegerMaximum)
+			},
+		},
+		{
+			name:           "relative path segments",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/relative",
+			paramName:      "rel",
+			expectedGoType: "string",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeString, got.Validation.Kind)
+				assert.Equal(t, uint64(4), got.Validation.MinLength)
+				assert.Equal(t, "^[0-9]+$", got.Validation.Pattern)
+			},
+		},
+		{
+			name:           "fragment pointer in external doc",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/fragment",
+			paramName:      "token",
+			expectedGoType: "string",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeString, got.Validation.Kind)
+				assert.Equal(t, uint64(5), got.Validation.MinLength)
+				assert.Equal(t, uint64(12), got.Validation.MaxLength)
+				assert.Equal(t, "^[A-Z]+$", got.Validation.Pattern)
+			},
+		},
+		{
+			name:           "single hop json regression",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/single-hop-json",
+			paramName:      "directJson",
+			expectedGoType: "string",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeString, got.Validation.Kind)
+				assert.Equal(t, uint64(3), got.Validation.MinLength)
+				assert.Equal(t, uint64(8), got.Validation.MaxLength)
+			},
+		},
+		{
+			name:           "single hop yaml regression",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/single-hop-yaml",
+			paramName:      "directYaml",
+			expectedGoType: "string",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.Equal(t, openapi3.TypeString, got.Validation.Kind)
+				assert.Equal(t, uint64(1), got.Validation.MinLength)
+				assert.Equal(t, "^[a-z]+$", got.Validation.Pattern)
+			},
+		},
+		{
+			name:           "cycle falls back gracefully",
+			specPath:       "test_specs/parameter-validation-mixed/openapi.yaml",
+			operationPath:  "/cycle",
+			paramName:      "loop",
+			expectedGoType: "interface{}",
+			assertion: func(t *testing.T, got ParameterDefinition) {
+				assert.False(t, got.Validation.HasValidation())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			swagger, err := util.LoadSwagger(tt.specPath)
+			require.NoError(t, err)
+
+			opts := Configuration{
+				PackageName: "api",
+				Generate: GenerateOptions{
+					ChiServer: true,
+					Models:    true,
+				},
+				InputSpec: tt.specPath,
+			}
+			globalState.options = opts
+			globalState.spec = swagger
+
+			op := swagger.Paths.Value(tt.operationPath).Get
+			require.NotNil(t, op)
+			params, err := DescribeParameters(op.Parameters, []string{SchemaNameToTypeName(op.OperationID) + "Params"}, []string{"paths", tt.operationPath, "get", "parameters"})
+			require.NoError(t, err)
+
+			var got *ParameterDefinition
+			for i := range params {
+				if params[i].ParamName == tt.paramName {
+					got = &params[i]
+					break
+				}
+			}
+			require.NotNil(t, got)
+			assert.Equal(t, tt.expectedGoType, got.Schema.GoType)
+			tt.assertion(t, *got)
+		})
+	}
+}
+
+func TestGenerateServerParameterValidationCodeAcrossMixedFormats(t *testing.T) {
+	specPath := "test_specs/parameter-validation-mixed/openapi.yaml"
+	swagger, err := util.LoadSwagger(specPath)
+	require.NoError(t, err)
+
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			ChiServer: true,
+			Models:    true,
+		},
+		InputSpec: specPath,
+	}
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	require.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	assert.Contains(t, code, "type GetCrossFormatStringParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\\s*Code\\s+string\\b`), code)
+	assert.NotContains(t, code, "Code string `json:")
+
+	assert.Contains(t, code, "type GetCrossFormatIntParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\\s*Count\\s+int64\\b`), code)
+	assert.NotContains(t, code, "Count int64 `json:")
+
+	assert.Contains(t, code, `validateParamString("code", string(params.Code), 3, true, 8, true, "^[a-z]+$", true, nil, false)`)
+	assert.Contains(t, code, `validateParamInteger("count", int64(params.Count), "2", true, true, "6", true, false, nil, false)`)
+	assert.Contains(t, code, `validateParamString("token", string(params.Token), 5, true, 12, true, "^[A-Z]+$", true, nil, false)`)
+	assert.Contains(t, code, `validateParamString("rel", string(params.Rel), 4, true, 0, false, "^[0-9]+$", true, nil, false)`)
+
+	assert.Contains(t, code, "type GetCycleParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\\s*Loop\\s+interface\\{\\}`), code)
+
+	assert.Contains(t, code, "type CreateThingJSONBody struct {")
+	assert.Contains(t, code, "Name string `json:\"name\"`")
 }
 
 func TestBuildParameterValidationPlanSkipsUnsupportedSchemas(t *testing.T) {

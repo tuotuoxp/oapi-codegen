@@ -1,0 +1,41 @@
+openapi: 3.0.3
+info:
+  title: cross format paths
+  version: "1.0"
+paths:
+  /cross-format-string:
+    get:
+      operationId: getCrossFormatString
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            $ref: ../schemas/string/a.json
+      responses:
+        "200":
+          description: ok
+  /cross-format-int:
+    get:
+      operationId: getCrossFormatInt
+      parameters:
+        - name: count
+          in: query
+          required: true
+          schema:
+            $ref: ../schemas/int/a.json
+      responses:
+        "200":
+          description: ok
+  /fragment:
+    get:
+      operationId: getFragment
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            $ref: ../schemas/fragments.yaml#/components/schemas/TokenParam
+      responses:
+        "200":
+          description: ok

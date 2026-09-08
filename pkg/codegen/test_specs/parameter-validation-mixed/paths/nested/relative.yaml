@@ -1,0 +1,17 @@
+openapi: 3.0.3
+info:
+  title: relative path refs
+  version: "1.0"
+paths:
+  /relative:
+    get:
+      operationId: getRelative
+      parameters:
+        - name: rel
+          in: query
+          required: true
+          schema:
+            $ref: ../../schemas/relative/a.json
+      responses:
+        "200":
+          description: ok
