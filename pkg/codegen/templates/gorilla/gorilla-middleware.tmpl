@@ -35,6 +35,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(w http.ResponseWriter, r *http.Requ
     siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
     return
   }
+  {{if .HasValidation}}
+  err = {{.ValidationCall $varName}}
+  if err != nil {
+    siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+    return
+  }
+  {{end}}
   {{end}}
 
   {{end}}
@@ -88,6 +95,23 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(w http.ResponseWriter, r *http.Requ
         }
         return
       }
+      {{if .HasValidation}}
+      {{if .RequiresNilCheck}}
+      if params.{{.GoName}} != nil {
+        err = {{.ValidationCall (printf "*params.%s" .GoName)}}
+        if err != nil {
+          siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+          return
+        }
+      }
+      {{else}}
+      err = {{.ValidationCall (printf "params.%s" .GoName)}}
+      if err != nil {
+        siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+        return
+      }
+      {{end}}
+      {{end}}
       {{end}}
   {{end}}
 
@@ -121,6 +145,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(w http.ResponseWriter, r *http.Requ
             siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
             return
           }
+          {{if .HasValidation}}
+          err = {{.ValidationCall .GoName}}
+          if err != nil {
+            siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+            return
+          }
+          {{end}}
         {{end}}
 
           params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}{{.GoName}}
@@ -170,6 +201,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(w http.ResponseWriter, r *http.Requ
           siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
           return
         }
+        {{if .HasValidation}}
+        err = {{.ValidationCall "value"}}
+        if err != nil {
+          siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+          return
+        }
+        {{end}}
         params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}value
       {{end}}
 

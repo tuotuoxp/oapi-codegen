@@ -319,6 +319,7 @@ func main() {
 	if len(noVCSVersionOverride) > 0 {
 		opts.NoVCSVersionOverride = &noVCSVersionOverride
 	}
+	opts.Configuration.InputSpec = flag.Arg(0)
 
 	code, genErr := codegen.Generate(swagger, opts.Configuration)
 

@@ -36,6 +36,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *gin.Context) {
     siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
     return
   }
+  {{if .HasValidation}}
+  err = {{.ValidationCall $varName}}
+  if err != nil {
+    siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+    return
+  }
+  {{end}}
   {{end}}
 
   {{end}}
@@ -81,6 +88,23 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *gin.Context) {
         siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
         return
       }
+      {{if .HasValidation}}
+      {{if .RequiresNilCheck}}
+      if params.{{.GoName}} != nil {
+        err = {{.ValidationCall (printf "*params.%s" .GoName)}}
+        if err != nil {
+          siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+          return
+        }
+      }
+      {{else}}
+      err = {{.ValidationCall (printf "params.%s" .GoName)}}
+      if err != nil {
+        siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+        return
+      }
+      {{end}}
+      {{end}}
       {{end}}
   {{end}}
 
@@ -114,6 +138,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *gin.Context) {
             siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
             return
           }
+          {{if .HasValidation}}
+          err = {{.ValidationCall .GoName}}
+          if err != nil {
+            siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+            return
+          }
+          {{end}}
         {{end}}
 
           params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}{{.GoName}}
@@ -161,6 +192,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *gin.Context) {
             siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
             return
         }
+        {{if .HasValidation}}
+        err = {{.ValidationCall "value"}}
+        if err != nil {
+            siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+            return
+        }
+        {{end}}
         params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}value
       {{end}}
 

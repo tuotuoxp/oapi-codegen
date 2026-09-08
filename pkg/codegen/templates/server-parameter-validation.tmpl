@@ -1,0 +1,56 @@
+func validateParamString(paramName string, value string, minLength uint64, hasMinLength bool, maxLength uint64, hasMaxLength bool, pattern string, hasPattern bool, enumValues []string, hasEnum bool) error {
+	if hasMinLength && uint64(len([]rune(value))) < minLength {
+		return fmt.Errorf("parameter %s length must be at least %d", paramName, minLength)
+	}
+	if hasMaxLength && uint64(len([]rune(value))) > maxLength {
+		return fmt.Errorf("parameter %s length must be at most %d", paramName, maxLength)
+	}
+	if hasPattern {
+		matched, err := regexp.MatchString(pattern, value)
+		if err != nil {
+			return err
+		}
+		if !matched {
+			return fmt.Errorf("parameter %s must match pattern %q", paramName, pattern)
+		}
+	}
+	if hasEnum {
+		for _, enumValue := range enumValues {
+			if value == enumValue {
+				return nil
+			}
+		}
+		return fmt.Errorf("parameter %s must be one of %v", paramName, enumValues)
+	}
+	return nil
+}
+
+func validateParamNumber(paramName string, value float64, minimum float64, hasMinimum bool, exclusiveMinimum bool, maximum float64, hasMaximum bool, exclusiveMaximum bool, enumValues []float64, hasEnum bool) error {
+	if hasMinimum {
+		if exclusiveMinimum {
+			if !(value > minimum) {
+				return fmt.Errorf("parameter %s must be greater than %v", paramName, minimum)
+			}
+		} else if value < minimum {
+			return fmt.Errorf("parameter %s must be greater than or equal to %v", paramName, minimum)
+		}
+	}
+	if hasMaximum {
+		if exclusiveMaximum {
+			if !(value < maximum) {
+				return fmt.Errorf("parameter %s must be less than %v", paramName, maximum)
+			}
+		} else if value > maximum {
+			return fmt.Errorf("parameter %s must be less than or equal to %v", paramName, maximum)
+		}
+	}
+	if hasEnum {
+		for _, enumValue := range enumValues {
+			if value == enumValue {
+				return nil
+			}
+		}
+		return fmt.Errorf("parameter %s must be one of %v", paramName, enumValues)
+	}
+	return nil
+}
