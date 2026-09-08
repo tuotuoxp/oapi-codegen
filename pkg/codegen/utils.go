@@ -469,10 +469,10 @@ func refPathToGoTypeSelf(refPath string, local bool) (string, error) {
 	pathParts := strings.Split(refPath, "/")
 	depth := len(pathParts)
 	if local {
-		if depth != 4 {
+		if depth < 4 || depth > 8 {
 			return "", fmt.Errorf("unexpected reference depth: %d for ref: %s local: %t", depth, refPath, local)
 		}
-	} else if depth != 4 && depth != 2 {
+	} else if depth < 2 || depth > 8 {
 		return "", fmt.Errorf("unexpected reference depth: %d for ref: %s local: %t", depth, refPath, local)
 	}
 

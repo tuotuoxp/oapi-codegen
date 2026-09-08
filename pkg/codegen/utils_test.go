@@ -233,6 +233,7 @@ components:
 
 func TestRefPathToGoType(t *testing.T) {
 	old := globalState.importMapping
+	oldSpec := globalState.spec
 	globalState.importMapping = constructImportMapping(
 		map[string]string{
 			"doc.json":                    "externalref0",
@@ -241,12 +242,15 @@ func TestRefPathToGoType(t *testing.T) {
 			"dj-current-package.yml": "-",
 		},
 	)
+	globalState.spec = &openapi3.T{}
 	defer func() { globalState.importMapping = old }()
+	defer func() { globalState.spec = oldSpec }()
 
 	tests := []struct {
-		name   string
-		path   string
-		goType string
+		name        string
+		path        string
+		goType      string
+		errContains string
 	}{
 		{
 			name:   "local-schemas",
@@ -289,16 +293,39 @@ func TestRefPathToGoType(t *testing.T) {
 			goType: "externalRef1.FooBar",
 		},
 		{
-			name: "local-too-deep",
-			path: "#/components/parameters/foo/components/bar",
+			name:   "remote-depth-3",
+			path:   "doc.json#/foo/bar",
+			goType: "externalRef0.Bar",
 		},
 		{
-			name: "remote-too-deep",
-			path: "doc.json#/components/parameters/foo/foo_bar",
+			name:   "local-depth-5",
+			path:   "#/components/parameters/foo/bar",
+			goType: "Bar",
 		},
 		{
-			name: "url-too-deep",
-			path: "http://deepmap.com/doc.json#/components/parameters/foo/foo_bar",
+			name:   "remote-depth-8",
+			path:   "doc.json#/components/parameters/foo/bar/baz/qux/quux",
+			goType: "externalRef0.Quux",
+		},
+		{
+			name:        "local-too-deep",
+			path:        "#/components/parameters/foo/bar/baz/qux/quux/corge",
+			errContains: "unexpected reference depth: 9",
+		},
+		{
+			name:        "remote-too-deep",
+			path:        "doc.json#/components/parameters/foo/bar/baz/qux/quux/corge",
+			errContains: "unexpected reference depth: 9",
+		},
+		{
+			name:        "url-too-deep",
+			path:        "http://deepmap.com/doc.json#/components/parameters/foo/bar/baz/qux/quux/corge",
+			errContains: "unexpected reference depth: 9",
+		},
+		{
+			name:        "local-too-shallow-path",
+			path:        "#/foo/bar",
+			errContains: "unexpected reference depth: 3",
 		},
 	}
 
@@ -307,6 +334,7 @@ func TestRefPathToGoType(t *testing.T) {
 			goType, err := RefPathToGoType(tc.path)
 			if tc.goType == "" {
 				assert.Error(t, err)
+				assert.ErrorContains(t, err, tc.errContains)
 				return
 			}
 
