@@ -278,6 +278,11 @@ func TestRefPathToGoType(t *testing.T) {
 			goType: "externalRef0.Foo",
 		},
 		{
+			name:   "non-local-depth-2",
+			path:   "doc.json#/foo_bar",
+			goType: "externalRef0.FooBar",
+		},
+		{
 			name:   "remote-pathed",
 			path:   "doc.json#/components/parameters/foo",
 			goType: "externalRef0.Foo",
@@ -303,6 +308,21 @@ func TestRefPathToGoType(t *testing.T) {
 			goType: "Bar",
 		},
 		{
+			name:   "local-defs",
+			path:   "#/$defs/PaymentGroupNo",
+			goType: "PaymentGroupNo",
+		},
+		{
+			name:   "local-defs-depth-5",
+			path:   "#/$defs/foo/bar/baz",
+			goType: "Baz",
+		},
+		{
+			name:   "local-defs-depth-8",
+			path:   "#/$defs/foo/bar/baz/qux/quux/corge",
+			goType: "Corge",
+		},
+		{
 			name:   "remote-depth-8",
 			path:   "doc.json#/components/parameters/foo/bar/baz/qux/quux",
 			goType: "externalRef0.Quux",
@@ -315,6 +335,11 @@ func TestRefPathToGoType(t *testing.T) {
 		{
 			name:        "remote-too-deep",
 			path:        "doc.json#/components/parameters/foo/bar/baz/qux/quux/corge",
+			errContains: "unexpected reference depth: 9",
+		},
+		{
+			name:        "local-defs-too-deep",
+			path:        "#/$defs/foo/bar/baz/qux/quux/corge/grault",
 			errContains: "unexpected reference depth: 9",
 		},
 		{
