@@ -171,6 +171,67 @@ func TestGenerateServerParameterValidationWithoutInputSpecFallsBack(t *testing.T
 	assert.True(t, strings.Contains(code, "validateParamString") || strings.Contains(code, "validateParamNumber"))
 }
 
+func TestResolveParameterValidationIgnoresSequenceIndexesAfterIncludeExpansion(t *testing.T) {
+	specPath := "test_specs/parameter-validation-include/spec.yaml"
+	swagger, err := util.LoadSwagger(specPath)
+	require.NoError(t, err)
+
+	resolver, err := newParameterValidationResolver(specPath)
+	require.NoError(t, err)
+	require.NotNil(t, resolver)
+
+	paramRef := findParameterRefByInAndName(t, swagger.Paths.Value("/included-header").Get.Parameters, openapi3.ParameterInHeader, "X-Header")
+	plan, err := resolver.resolvePlan(paramRef, []string{"paths", "/included-header", "get", "parameters"}, 99)
+	require.NoError(t, err)
+	assert.True(t, plan.HasValidation())
+	assert.Equal(t, openapi3.TypeString, plan.Kind)
+	assert.Equal(t, uint64(3), plan.MinLength)
+	assert.Equal(t, uint64(8), plan.MaxLength)
+	assert.Equal(t, "^[A-Z]+$", plan.Pattern)
+	assert.Equal(t, []string{"FOO", "BAR"}, plan.StringEnum)
+}
+
+func TestResolveParameterValidationFallsBackWhenSourceLookupMismatches(t *testing.T) {
+	specPath := "test_specs/parameter-validation/spec.yaml"
+	swagger, err := util.LoadSwagger(specPath)
+	require.NoError(t, err)
+
+	resolver, err := newParameterValidationResolver(specPath)
+	require.NoError(t, err)
+	require.NotNil(t, resolver)
+
+	paramRef := swagger.Paths.Value("/different").Get.Parameters[0]
+	plan, err := resolver.resolvePlan(paramRef, []string{"paths", "/missing", "get", "parameters"}, 0)
+	require.NoError(t, err)
+	assert.True(t, plan.HasValidation())
+	assert.Equal(t, uint64(1), plan.MinLength)
+	assert.False(t, plan.HasMaxLength)
+	assert.Equal(t, "^[a-z]+$", plan.Pattern)
+}
+
+func TestGenerateServerParameterValidationCodeWithIncludeArrayHeaderParameter(t *testing.T) {
+	specPath := "test_specs/parameter-validation-include/spec.yaml"
+	swagger, err := util.LoadSwagger(specPath)
+	require.NoError(t, err)
+
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			ChiServer: true,
+		},
+		InputSpec: specPath,
+	}
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	require.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	assert.Contains(t, code, `validateParamString("X-Header", string(params.XHeader), 3, true, 8, true, "^[A-Z]+$", true, []string{"FOO", "BAR"}, true)`)
+}
+
 func TestBuildParameterValidationPlanSkipsUnsupportedSchemas(t *testing.T) {
 	tests := []parameterValidationSchema{
 		{HasAllOf: true},
@@ -191,4 +252,17 @@ func TestBuildParameterValidationPlanSkipsUnsupportedSchemas(t *testing.T) {
 
 func ptrString(v string) *string {
 	return &v
+}
+
+func findParameterRefByInAndName(t *testing.T, params openapi3.Parameters, in string, name string) *openapi3.ParameterRef {
+	t.Helper()
+
+	for _, paramRef := range params {
+		if paramRef != nil && paramRef.Value != nil && paramRef.Value.In == in && paramRef.Value.Name == name {
+			return paramRef
+		}
+	}
+
+	t.Fatalf("parameter %s in %s not found", name, in)
+	return nil
 }

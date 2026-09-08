@@ -40,6 +40,10 @@ func LoadSwagger(filePath string) (swagger *openapi3.T, err error) {
 	})
 }
 
+func PreprocessSwaggerIncludes(filePath string) ([]byte, error) {
+	return preprocessSwaggerIncludes(filePath)
+}
+
 // Deprecated: In kin-openapi v0.126.0 (https://github.com/getkin/kin-openapi/tree/v0.126.0?tab=readme-ov-file#v01260) the Circular Reference Counter functionality was removed, instead resolving all references with backtracking, to avoid needing to provide a limit to reference counts.
 //
 // This is now identital in method as `LoadSwagger`.
