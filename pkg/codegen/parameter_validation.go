@@ -344,6 +344,16 @@ func (r *parameterValidationResolver) parameterNodeMatches(node *yaml.Node, curr
 		return refNode != nil && refNode.Kind == yaml.ScalarNode && refNode.Value == paramRef.Ref, nil
 	}
 
+	refNode := yamlMapValue(node, "$ref")
+	if refNode == nil || refNode.Kind != yaml.ScalarNode {
+		name := yamlMapString(node, "name")
+		in := yamlMapString(node, "in")
+		if name == nil || in == nil {
+			return false, nil
+		}
+		return *name == paramRef.Value.Name && *in == paramRef.Value.In, nil
+	}
+
 	resolvedNode, _, err := r.resolveParameterNode(currentFile, node, map[string]bool{})
 	if err != nil {
 		return false, err
@@ -355,7 +365,6 @@ func (r *parameterValidationResolver) parameterNodeMatches(node *yaml.Node, curr
 		return false, nil
 	}
 	return *name == paramRef.Value.Name && *in == paramRef.Value.In, nil
-}
 
 func (r *parameterValidationResolver) resolveParameterNode(currentFile string, node *yaml.Node, seen map[string]bool) (*yaml.Node, string, error) {
 	refNode := yamlMapValue(node, "$ref")
