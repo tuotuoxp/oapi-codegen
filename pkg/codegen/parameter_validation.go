@@ -255,7 +255,7 @@ func (r *parameterValidationResolver) resolvePlan(paramRef *openapi3.ParameterRe
 	if err != nil {
 		var lookupErr *parameterValidationLookupError
 		if errors.As(err, &lookupErr) {
-			fmt.Fprintf(os.Stderr, "Warning: failed to resolve original parameter validation source for %q: %v; falling back to resolved schema\n", paramRef.Value.Name, err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to resolve original parameter validation source for %q in %q: %v; falling back to resolved schema\n", paramRef.Value.Name, paramRef.Value.In, err)
 			return buildParameterValidationPlanFromLoadedSchema(paramRef.Value.Schema)
 		}
 		return ParameterValidationPlan{}, err
