@@ -222,6 +222,7 @@ func validateParamCustomType(paramName string, value string, dest any) error {
 		if err := ju.UnmarshalJSON(quoted); err != nil {
 			return fmt.Errorf("parameter %s: %w", paramName, err)
 		}
+		return nil
 	}
-	return nil
+	return fmt.Errorf("parameter %s: unsupported custom type (must implement encoding.TextUnmarshaler or json.Unmarshaler)", paramName)
 }
