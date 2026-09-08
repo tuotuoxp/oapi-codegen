@@ -22,6 +22,17 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx echo.Context) error {
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
     }
+    {{if .UsesCustomTypeValidation}}
+    err = {{.CustomTypeValidationCall (printf "ctx.Param(%q)" .ParamName) (printf "&%s" $varName)}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{else if .HasValidation}}
+    err = {{.ValidationCall $varName}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{end}}
 {{end}}
 {{end}}
 
@@ -41,6 +52,35 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx echo.Context) error {
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
     }
+    {{if .UsesCustomTypeValidation}}
+    {{if .HasOptionalPointer}}
+    if params.{{.GoName}} != nil {
+        err = {{.CustomTypeValidationCall (printf "ctx.QueryParam(%q)" .ParamName) (printf "params.%s" .GoName)}}
+        if err != nil {
+            return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+        }
+    }
+    {{else}}
+    err = {{.CustomTypeValidationCall (printf "ctx.QueryParam(%q)" .ParamName) (printf "&params.%s" .GoName)}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{end}}
+    {{else if .HasValidation}}
+    {{if .RequiresNilCheck}}
+    if params.{{.GoName}} != nil {
+        err = {{.ValidationCall (printf "*params.%s" .GoName)}}
+        if err != nil {
+            return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+        }
+    }
+    {{else}}
+    err = {{.ValidationCall (printf "params.%s" .GoName)}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{end}}
+    {{end}}
     {{else}}
     if paramValue := ctx.QueryParam("{{.ParamName}}"); paramValue != "" {
     {{if .IsPassThrough}}
@@ -83,6 +123,17 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx echo.Context) error {
         if err != nil {
             return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
         }
+        {{if .UsesCustomTypeValidation}}
+        err = {{.CustomTypeValidationCall "valueList[0]" (printf "&%s" .GoName)}}
+        if err != nil {
+            return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+        }
+        {{else if .HasValidation}}
+        err = {{.ValidationCall .GoName}}
+        if err != nil {
+            return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+        }
+        {{end}}
 {{end}}
         params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}{{.GoName}}
         } {{if .Required}}else {
@@ -115,6 +166,17 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx echo.Context) error {
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
     }
+    {{if .UsesCustomTypeValidation}}
+    err = {{.CustomTypeValidationCall "cookie.Value" "&value"}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{else if .HasValidation}}
+    err = {{.ValidationCall "value"}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{end}}
     params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}value
     {{end}}
     }{{if .Required}} else {

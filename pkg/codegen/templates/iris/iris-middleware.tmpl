@@ -32,6 +32,21 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx iris.Context) {
         ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
         return
     }
+    {{if .UsesCustomTypeValidation}}
+    err = {{.CustomTypeValidationCall (printf "ctx.Params().Get(%q)" .ParamName) (printf "&%s" $varName)}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{else if .HasValidation}}
+    err = {{.ValidationCall $varName}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{end}}
 {{end}}
 {{end}}
 
@@ -53,6 +68,43 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx iris.Context) {
         ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
         return
     }
+    {{if .UsesCustomTypeValidation}}
+    {{if .HasOptionalPointer}}
+    if params.{{.GoName}} != nil {
+        err = {{.CustomTypeValidationCall (printf "ctx.URLParam(%q)" .ParamName) (printf "params.%s" .GoName)}}
+        if err != nil {
+            ctx.StatusCode(http.StatusBadRequest)
+            ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+            return
+        }
+    }
+    {{else}}
+    err = {{.CustomTypeValidationCall (printf "ctx.URLParam(%q)" .ParamName) (printf "&params.%s" .GoName)}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{end}}
+    {{else if .HasValidation}}
+    {{if .RequiresNilCheck}}
+    if params.{{.GoName}} != nil {
+        err = {{.ValidationCall (printf "*params.%s" .GoName)}}
+        if err != nil {
+            ctx.StatusCode(http.StatusBadRequest)
+            ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+            return
+        }
+    }
+    {{else}}
+    err = {{.ValidationCall (printf "params.%s" .GoName)}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{end}}
+    {{end}}
     {{else}}
     if paramValue := ctx.URLParam("{{.ParamName}}"); paramValue != "" {
     {{if .IsPassThrough}}
@@ -105,6 +157,21 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx iris.Context) {
             ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
             return
         }
+        {{if .UsesCustomTypeValidation}}
+        err = {{.CustomTypeValidationCall "valueList[0]" (printf "&%s" .GoName)}}
+        if err != nil {
+            ctx.StatusCode(http.StatusBadRequest)
+            ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+            return
+        }
+        {{else if .HasValidation}}
+        err = {{.ValidationCall .GoName}}
+        if err != nil {
+            ctx.StatusCode(http.StatusBadRequest)
+            ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+            return
+        }
+        {{end}}
 {{end}}
         params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}{{.GoName}}
         } {{if .Required}}else {
@@ -145,6 +212,21 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx iris.Context) {
         ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
         return
     }
+    {{if .UsesCustomTypeValidation}}
+    err = {{.CustomTypeValidationCall "cookie" "&value"}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{else if .HasValidation}}
+    err = {{.ValidationCall "value"}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{end}}
     params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}value
     {{end}}
     }{{if .Required}} else {

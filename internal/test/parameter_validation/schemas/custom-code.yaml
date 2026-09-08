@@ -1,0 +1,5 @@
+type: string
+x-go-type: CustomCode
+x-go-type-skip-optional-pointer: true
+pattern: ^[A-Z]+$
+minLength: 4

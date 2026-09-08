@@ -43,6 +43,17 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *fiber.Ctx) error {
   if err != nil {
     return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
   }
+  {{if .UsesCustomTypeValidation}}
+  err = {{.CustomTypeValidationCall (printf "c.Params(%q)" .ParamName) (printf "&%s" $varName)}}
+  if err != nil {
+    return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+  }
+  {{else if .HasValidation}}
+  err = {{.ValidationCall $varName}}
+  if err != nil {
+    return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+  }
+  {{end}}
   {{end}}
 
   {{end}}
@@ -94,6 +105,35 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *fiber.Ctx) error {
       if err != nil {
         return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
       }
+      {{if .UsesCustomTypeValidation}}
+      {{if .HasOptionalPointer}}
+      if params.{{.GoName}} != nil {
+        err = {{.CustomTypeValidationCall (printf "c.Query(%q)" .ParamName) (printf "params.%s" .GoName)}}
+        if err != nil {
+          return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+        }
+      }
+      {{else}}
+      err = {{.CustomTypeValidationCall (printf "c.Query(%q)" .ParamName) (printf "&params.%s" .GoName)}}
+      if err != nil {
+        return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+      }
+      {{end}}
+      {{else if .HasValidation}}
+      {{if .RequiresNilCheck}}
+      if params.{{.GoName}} != nil {
+        err = {{.ValidationCall (printf "*params.%s" .GoName)}}
+        if err != nil {
+          return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+        }
+      }
+      {{else}}
+      err = {{.ValidationCall (printf "params.%s" .GoName)}}
+      if err != nil {
+        return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+      }
+      {{end}}
+      {{end}}
       {{end}}
   {{end}}
 
@@ -124,6 +164,17 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *fiber.Ctx) error {
           if err != nil {
             return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
           }
+          {{if .UsesCustomTypeValidation}}
+          err = {{.CustomTypeValidationCall "valueList[0]" (printf "&%s" .GoName)}}
+          if err != nil {
+            return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+          }
+          {{else if .HasValidation}}
+          err = {{.ValidationCall .GoName}}
+          if err != nil {
+            return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+          }
+          {{end}}
         {{end}}
 
           params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}{{.GoName}}
@@ -168,6 +219,17 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *fiber.Ctx) error {
         if err != nil {
           return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
         }
+        {{if .UsesCustomTypeValidation}}
+        err = {{.CustomTypeValidationCall "cookie" "&value"}}
+        if err != nil {
+          return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+        }
+        {{else if .HasValidation}}
+        err = {{.ValidationCall "value"}}
+        if err != nil {
+          return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err).Error())
+        }
+        {{end}}
         params.{{.GoName}} = {{if .HasOptionalPointer}}&{{end}}value
       {{end}}
 

@@ -43,6 +43,9 @@ type Configuration struct {
 	// NoVCSVersionOverride allows overriding the version of the application for cases where no Version Control System (VCS) is available when building, for instance when using a Nix derivation.
 	// See documentation for how to use it in examples/no-vcs-version-override/README.md
 	NoVCSVersionOverride *string `yaml:"-"`
+	// InputSpec is the path or URL used to load the source OpenAPI specification.
+	// It is populated by the CLI and test helpers and is not read from config.
+	InputSpec string `yaml:"-"`
 }
 
 // Validate checks whether Configuration represent a valid configuration

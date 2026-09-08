@@ -36,6 +36,7 @@ type ParameterDefinition struct {
 	Required  bool   // Is this a required parameter?
 	Spec      *openapi3.Parameter
 	Schema    Schema
+	Validation ParameterValidationPlan
 }
 
 // TypeDef is here as an adapter after a large refactoring so that I don't
@@ -245,9 +246,13 @@ func (p ParameterDefinitions) FindByName(name string) *ParameterDefinition {
 // DescribeParameters walks the given parameters dictionary, and generates the above
 // descriptors into a flat list. This makes it a lot easier to traverse the
 // data in the template engine.
-func DescribeParameters(params openapi3.Parameters, path []string) ([]ParameterDefinition, error) {
+func DescribeParameters(params openapi3.Parameters, path []string, rawBasePath []string) ([]ParameterDefinition, error) {
 	outParams := make([]ParameterDefinition, 0, len(params))
-	for _, paramOrRef := range params {
+	resolver, err := newParameterValidationResolver(globalState.options.InputSpec)
+	if err != nil {
+		return nil, fmt.Errorf("error preparing parameter validation resolver: %w", err)
+	}
+	for i, paramOrRef := range params {
 		param := paramOrRef.Value
 
 		goType, err := paramToGoType(param, append(path, param.Name))
@@ -285,6 +290,10 @@ func DescribeParameters(params openapi3.Parameters, path []string) ([]ParameterD
 					paramOrRef.Ref, param.Name, err)
 			}
 			pd.Schema.GoType = goType
+		}
+		pd.Validation, err = resolver.resolvePlan(paramOrRef, rawBasePath, i)
+		if err != nil {
+			return nil, fmt.Errorf("error resolving validation for param (%s): %w", param.Name, err)
 		}
 		outParams = append(outParams, pd)
 	}
@@ -753,7 +762,7 @@ func OperationDefinitions(swagger *openapi3.T) ([]OperationDefinition, error) {
 		pathItem := swagger.Paths.Value(requestPath)
 		// These are parameters defined for all methods on a given path. They
 		// are shared by all methods.
-		globalParams, err := DescribeParameters(pathItem.Parameters, nil)
+		globalParams, err := DescribeParameters(pathItem.Parameters, nil, []string{"paths", requestPath, "parameters"})
 		if err != nil {
 			return nil, fmt.Errorf("error describing global parameters for %s: %s",
 				requestPath, err)
@@ -811,7 +820,7 @@ func OperationDefinitions(swagger *openapi3.T) ([]OperationDefinition, error) {
 
 			// These are parameters defined for the specific path method that
 			// we're iterating over.
-			localParams, err := DescribeParameters(op.Parameters, []string{operationId + "Params"})
+			localParams, err := DescribeParameters(op.Parameters, []string{operationId + "Params"}, []string{"paths", requestPath, strings.ToLower(opName), "parameters"})
 			if err != nil {
 				return nil, fmt.Errorf("error describing global parameters for %s/%s: %s",
 					opName, requestPath, err)
@@ -1266,49 +1275,49 @@ func GenerateTypesForOperations(t *template.Template, ops []OperationDefinition)
 // GenerateIrisServer generates all the go code for the ServerInterface as well as
 // all the wrapper functions around our handlers.
 func GenerateIrisServer(t *template.Template, operations []OperationDefinition) (string, error) {
-	return GenerateTemplates([]string{"iris/iris-interface.tmpl", "iris/iris-middleware.tmpl", "iris/iris-handler.tmpl"}, t, operations)
+	return GenerateTemplates([]string{"iris/iris-interface.tmpl", "iris/iris-middleware.tmpl", "iris/iris-handler.tmpl", "server-parameter-validation.tmpl"}, t, operations)
 }
 
 // GenerateChiServer generates all the go code for the ServerInterface as well as
 // all the wrapper functions around our handlers.
 func GenerateChiServer(t *template.Template, operations []OperationDefinition) (string, error) {
-	return GenerateTemplates([]string{"chi/chi-interface.tmpl", "chi/chi-middleware.tmpl", "chi/chi-handler.tmpl"}, t, operations)
+	return GenerateTemplates([]string{"chi/chi-interface.tmpl", "chi/chi-middleware.tmpl", "chi/chi-handler.tmpl", "server-parameter-validation.tmpl"}, t, operations)
 }
 
 // GenerateFiberServer generates all the go code for the ServerInterface as well as
 // all the wrapper functions around our handlers.
 func GenerateFiberServer(t *template.Template, operations []OperationDefinition) (string, error) {
-	return GenerateTemplates([]string{"fiber/fiber-interface.tmpl", "fiber/fiber-middleware.tmpl", "fiber/fiber-handler.tmpl"}, t, operations)
+	return GenerateTemplates([]string{"fiber/fiber-interface.tmpl", "fiber/fiber-middleware.tmpl", "fiber/fiber-handler.tmpl", "server-parameter-validation.tmpl"}, t, operations)
 }
 
 // GenerateEchoServer generates all the go code for the ServerInterface as well as
 // all the wrapper functions around our handlers.
 func GenerateEchoServer(t *template.Template, operations []OperationDefinition) (string, error) {
-	return GenerateTemplates([]string{"echo/echo-interface.tmpl", "echo/echo-wrappers.tmpl", "echo/echo-register.tmpl"}, t, operations)
+	return GenerateTemplates([]string{"echo/echo-interface.tmpl", "echo/echo-wrappers.tmpl", "echo/echo-register.tmpl", "server-parameter-validation.tmpl"}, t, operations)
 }
 
 // GenerateEcho5Server generates all the go code for the ServerInterface as well as
 // all the wrapper functions around our handlers.
 func GenerateEcho5Server(t *template.Template, operations []OperationDefinition) (string, error) {
-	return GenerateTemplates([]string{"echo/v5/echo-interface.tmpl", "echo/v5/echo-wrappers.tmpl", "echo/v5/echo-register.tmpl"}, t, operations)
+	return GenerateTemplates([]string{"echo/v5/echo-interface.tmpl", "echo/v5/echo-wrappers.tmpl", "echo/v5/echo-register.tmpl", "server-parameter-validation.tmpl"}, t, operations)
 }
 
 // GenerateGinServer generates all the go code for the ServerInterface as well as
 // all the wrapper functions around our handlers.
 func GenerateGinServer(t *template.Template, operations []OperationDefinition) (string, error) {
-	return GenerateTemplates([]string{"gin/gin-interface.tmpl", "gin/gin-wrappers.tmpl", "gin/gin-register.tmpl"}, t, operations)
+	return GenerateTemplates([]string{"gin/gin-interface.tmpl", "gin/gin-wrappers.tmpl", "gin/gin-register.tmpl", "server-parameter-validation.tmpl"}, t, operations)
 }
 
 // GenerateGorillaServer generates all the go code for the ServerInterface as well as
 // all the wrapper functions around our handlers.
 func GenerateGorillaServer(t *template.Template, operations []OperationDefinition) (string, error) {
-	return GenerateTemplates([]string{"gorilla/gorilla-interface.tmpl", "gorilla/gorilla-middleware.tmpl", "gorilla/gorilla-register.tmpl"}, t, operations)
+	return GenerateTemplates([]string{"gorilla/gorilla-interface.tmpl", "gorilla/gorilla-middleware.tmpl", "gorilla/gorilla-register.tmpl", "server-parameter-validation.tmpl"}, t, operations)
 }
 
 // GenerateStdHTTPServer generates all the go code for the ServerInterface as well as
 // all the wrapper functions around our handlers.
 func GenerateStdHTTPServer(t *template.Template, operations []OperationDefinition) (string, error) {
-	return GenerateTemplates([]string{"stdhttp/std-http-interface.tmpl", "stdhttp/std-http-middleware.tmpl", "stdhttp/std-http-handler.tmpl"}, t, operations)
+	return GenerateTemplates([]string{"stdhttp/std-http-interface.tmpl", "stdhttp/std-http-middleware.tmpl", "stdhttp/std-http-handler.tmpl", "server-parameter-validation.tmpl"}, t, operations)
 }
 
 func GenerateStrictServer(t *template.Template, operations []OperationDefinition, opts Configuration) (string, error) {
