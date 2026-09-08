@@ -283,6 +283,13 @@ func (r *parameterValidationResolver) parameterSchemaNode(paramRef *openapi3.Par
 			return nil, "", err
 		}
 	case len(basePath) != 0:
+		externalSource, err := r.hasExternalRefSource(basePath)
+		if err != nil {
+			return nil, "", &parameterValidationLookupError{err: err}
+		}
+		if externalSource {
+			return nil, "", nil
+		}
 		doc, err := r.loadDocument(r.rootPath)
 		if err != nil {
 			return nil, "", &parameterValidationLookupError{err: err}
@@ -365,6 +372,7 @@ func (r *parameterValidationResolver) parameterNodeMatches(node *yaml.Node, curr
 		return false, nil
 	}
 	return *name == paramRef.Value.Name && *in == paramRef.Value.In, nil
+}
 
 func (r *parameterValidationResolver) resolveParameterNode(currentFile string, node *yaml.Node, seen map[string]bool) (*yaml.Node, string, error) {
 	refNode := yamlMapValue(node, "$ref")
@@ -372,6 +380,47 @@ func (r *parameterValidationResolver) resolveParameterNode(currentFile string, n
 		return node, currentFile, nil
 	}
 	return r.resolveRefNode(currentFile, refNode.Value, seen)
+}
+
+func (r *parameterValidationResolver) hasExternalRefSource(basePath []string) (bool, error) {
+	if len(basePath) == 0 {
+		return false, nil
+	}
+	node, err := r.loadDocument(r.rootPath)
+	if err != nil {
+		return false, err
+	}
+
+	currentFile := r.rootPath
+	seen := map[string]bool{}
+	for _, part := range basePath {
+		node, currentFile, err = r.resolveParameterNode(currentFile, node, seen)
+		if err != nil {
+			return false, err
+		}
+		if currentFile != r.rootPath {
+			return true, nil
+		}
+
+		switch node.Kind {
+		case yaml.MappingNode:
+			next := yamlMapValue(node, part)
+			if next == nil {
+				return false, nil
+			}
+			node = next
+		case yaml.SequenceNode:
+			idx, convErr := strconv.Atoi(part)
+			if convErr != nil || idx < 0 || idx >= len(node.Content) {
+				return false, nil
+			}
+			node = node.Content[idx]
+		default:
+			return false, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (r *parameterValidationResolver) resolveSchema(currentFile string, node *yaml.Node, seen map[string]bool) (parameterValidationSchema, error) {
