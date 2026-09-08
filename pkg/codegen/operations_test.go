@@ -155,7 +155,7 @@ func TestJsonTag(t *testing.T) {
 			Required:  true,
 			Spec:      &openapi3.Parameter{},
 		}
-		assert.Equal(t, "`json:\"foo\"`", pd.JsonTag())
+		assert.Equal(t, "", pd.JsonTag())
 	})
 
 	t.Run("optional param with no extra tags", func(t *testing.T) {
@@ -164,7 +164,7 @@ func TestJsonTag(t *testing.T) {
 			Required:  false,
 			Spec:      &openapi3.Parameter{},
 		}
-		assert.Equal(t, "`json:\"foo,omitempty\"`", pd.JsonTag())
+		assert.Equal(t, "", pd.JsonTag())
 	})
 
 	t.Run("extra tags at parameter level", func(t *testing.T) {
@@ -180,7 +180,7 @@ func TestJsonTag(t *testing.T) {
 				},
 			},
 		}
-		assert.Equal(t, "`db:\"foo_col\" json:\"foo\" validate:\"required\"`", pd.JsonTag())
+		assert.Equal(t, "`db:\"foo_col\" validate:\"required\"`", pd.JsonTag())
 	})
 
 	t.Run("extra tags at schema level", func(t *testing.T) {
@@ -199,7 +199,7 @@ func TestJsonTag(t *testing.T) {
 				},
 			},
 		}
-		assert.Equal(t, "`json:\"foo\" validate:\"required\"`", pd.JsonTag())
+		assert.Equal(t, "`validate:\"required\"`", pd.JsonTag())
 	})
 
 	t.Run("parameter level takes precedence over schema level", func(t *testing.T) {
@@ -225,6 +225,6 @@ func TestJsonTag(t *testing.T) {
 			},
 		}
 		// Parameter-level "validate" wins, schema-level "db" is kept
-		assert.Equal(t, "`db:\"foo_col\" json:\"foo\" validate:\"param-level\"`", pd.JsonTag())
+		assert.Equal(t, "`db:\"foo_col\" validate:\"param-level\"`", pd.JsonTag())
 	})
 }

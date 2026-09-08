@@ -6,6 +6,8 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oapi-codegen/oapi-codegen/v2/pkg/util"
 )
 
 func TestProperty_GoTypeDef(t *testing.T) {
@@ -227,6 +229,7 @@ func TestProperty_GoTypeDef_nullable(t *testing.T) {
 		ReadOnly                                    bool
 		WriteOnly                                   bool
 	}
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -526,4 +529,31 @@ func TestProperty_ZeroValueIsNil(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParamToGoTypeResolvesNestedSchemaRefs(t *testing.T) {
+	specPath := "test_specs/nested-parameter-refs/spec.yaml"
+	swagger, err := util.LoadSwagger(specPath)
+	require.NoError(t, err)
+
+	oldInputSpec := globalState.options.InputSpec
+	t.Cleanup(func() {
+		globalState.options.InputSpec = oldInputSpec
+	})
+	globalState.options.InputSpec = specPath
+
+	params := swagger.Paths.Value("/items/{id}").Get.Parameters
+	require.Len(t, params, 4)
+
+	typeByName := map[string]string{}
+	for _, p := range params {
+		schema, err := paramToGoType(p.Value, []string{"GetItem", p.Value.Name})
+		require.NoError(t, err)
+		typeByName[p.Value.Name] = schema.GoType
+	}
+
+	assert.Equal(t, "int64", typeByName["id"])
+	assert.Equal(t, "int64", typeByName["q"])
+	assert.Equal(t, "string", typeByName["X-Trace"])
+	assert.Equal(t, "interface{}", typeByName["passthrough"])
 }

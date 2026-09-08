@@ -3,6 +3,7 @@ package codegen
 import (
 	_ "embed"
 	"go/format"
+	"regexp"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -74,7 +75,7 @@ type GetTestByNameResponse struct {
 
 	// Check the client method signatures:
 	assert.Contains(t, code, "type GetTestByNameParams struct {")
-	assert.Contains(t, code, "Top *int `form:\"$top,omitempty\" json:\"$top,omitempty\"`")
+	assert.Contains(t, code, "Top *int `form:\"$top,omitempty\"`")
 	assert.Contains(t, code, "func (c *Client) GetTestByName(ctx context.Context, name string, params *GetTestByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {")
 	assert.Contains(t, code, "func (c *ClientWithResponses) GetTestByNameWithResponse(ctx context.Context, name string, params *GetTestByNameParams, reqEditors ...RequestEditorFn) (*GetTestByNameResponse, error) {")
 	assert.Contains(t, code, "FavouriteBirds     *[]*string          `json:\"favourite_birds,omitempty\"`")
@@ -475,6 +476,40 @@ func TestGoRefHeaderExternalJSONOverlay(t *testing.T) {
 		"expected import from x-go-ref overlay next to external JSON $ref (header + query param)")
 	assert.Contains(t, code, "sdkopenapi.XGWAdminIDHeader",
 		"expected package-qualified type from x-go-ref overlay next to external JSON $ref")
+}
+
+func TestNestedParameterRefsAndParameterTags(t *testing.T) {
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			ChiServer: true,
+			Models:    true,
+		},
+		InputSpec: "test_specs/nested-parameter-refs/spec.yaml",
+	}
+	swagger, err := util.LoadSwagger(opts.InputSpec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	require.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	assert.Contains(t, code, "type GetItemParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Q\s+int64\b`), code)
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*XTrace\s+string\b`), code)
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Passthrough\s+interface\{\}`), code)
+	assert.NotContains(t, code, "Q int64 `json:")
+	assert.NotContains(t, code, "XTrace string `json:")
+	assert.NotContains(t, code, "Passthrough interface{} `json:")
+
+	assert.Contains(t, code, "var id int64")
+	assert.NotContains(t, code, "var id interface{}")
+
+	assert.Contains(t, code, "type CreateItemJSONBody struct {")
+	assert.Contains(t, code, "Name string `json:\"name\"`")
 }
 
 //go:embed test_spec.yaml

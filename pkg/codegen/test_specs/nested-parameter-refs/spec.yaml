@@ -1,0 +1,49 @@
+openapi: 3.0.3
+info:
+  title: nested parameter refs
+  version: "1.0"
+paths:
+  /items/{id}:
+    get:
+      operationId: getItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: ./schemas/path-top.yaml
+        - name: q
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/query-top.yaml
+        - name: X-Trace
+          in: header
+          required: true
+          schema:
+            $ref: ./schemas/header-top.yaml
+        - name: passthrough
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/untyped-top.yaml
+      responses:
+        "200":
+          description: ok
+  /items:
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: ok
