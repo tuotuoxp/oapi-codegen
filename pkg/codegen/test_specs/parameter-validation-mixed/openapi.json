@@ -1,0 +1,29 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "json mixed parameter validation",
+    "version": "1.0"
+  },
+  "paths": {
+    "/json-yaml-json": {
+      "get": {
+        "operationId": "getJsonYamlJson",
+        "parameters": [
+          {
+            "name": "amount",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "./schemas/json-yaml-json-top.yaml"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    }
+  }
+}

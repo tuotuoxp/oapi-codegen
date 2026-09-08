@@ -1,0 +1,1 @@
+{"type":"string","minLength":4,"pattern":"^[0-9]+$"}

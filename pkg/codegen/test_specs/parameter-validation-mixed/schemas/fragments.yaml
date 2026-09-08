@@ -1,0 +1,9 @@
+components:
+  schemas:
+    TokenBase:
+      type: string
+      minLength: 5
+      pattern: '^[A-Z]+$'
+    TokenParam:
+      $ref: '#/components/schemas/TokenBase'
+      maxLength: 12

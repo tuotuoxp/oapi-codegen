@@ -1,0 +1,90 @@
+openapi: 3.0.3
+info:
+  title: mixed parameter validation
+  version: "1.0"
+paths:
+  /cross-format-string:
+    $ref: ./paths/cross-format.yaml#/paths/~1cross-format-string
+  /cross-format-int:
+    $ref: ./paths/cross-format.yaml#/paths/~1cross-format-int
+  /fragment:
+    $ref: ./paths/cross-format.yaml#/paths/~1fragment
+  /relative:
+    $ref: ./paths/nested/relative.yaml#/paths/~1relative
+  /yaml-yaml-json:
+    get:
+      operationId: getYamlYamlJson
+      parameters:
+        - name: nested
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/yaml-yaml-json-top.yaml
+      responses:
+        "200":
+          description: ok
+  /yaml-json-yaml:
+    get:
+      operationId: getYamlJsonYaml
+      parameters:
+        - name: mixed
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/yaml-json-yaml-top.yaml
+      responses:
+        "200":
+          description: ok
+  /single-hop-json:
+    get:
+      operationId: getSingleHopJson
+      parameters:
+        - name: directJson
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/string/b.json
+      responses:
+        "200":
+          description: ok
+  /single-hop-yaml:
+    get:
+      operationId: getSingleHopYaml
+      parameters:
+        - name: directYaml
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/single-hop.yaml
+      responses:
+        "200":
+          description: ok
+  /cycle:
+    get:
+      operationId: getCycle
+      parameters:
+        - name: loop
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/cycle-a.json
+      responses:
+        "200":
+          description: ok
+  /body:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: ok

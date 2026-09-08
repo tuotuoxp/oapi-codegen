@@ -283,40 +283,56 @@ func (r *parameterValidationResolver) resolvePlan(paramRef *openapi3.ParameterRe
 }
 
 func (r *parameterValidationResolver) parameterSchemaNode(paramRef *openapi3.ParameterRef, basePath []string, _ int) (*yaml.Node, string, error) {
+	if len(basePath) != 0 {
+		return r.parameterSchemaNodeFromBasePath(paramRef, basePath)
+	}
+
+	if paramRef != nil && paramRef.Ref != "" {
+		paramNode, filePath, err := r.resolveRefNode(r.rootPath, paramRef.Ref, map[string]bool{})
+		if err != nil {
+			return nil, "", err
+		}
+		paramNode, filePath, err = r.resolveParameterNode(filePath, paramNode, map[string]bool{})
+		if err != nil {
+			return nil, "", err
+		}
+		return yamlMapValue(paramNode, "schema"), filePath, nil
+	}
+
+	return nil, "", nil
+}
+
+func (r *parameterValidationResolver) parameterSchemaNodeFromBasePath(paramRef *openapi3.ParameterRef, basePath []string) (*yaml.Node, string, error) {
 	var (
 		paramNode *yaml.Node
 		filePath  string
 		err       error
 	)
-	switch {
-	case paramRef.Ref != "":
-		paramNode, filePath, err = r.resolveRefNode(r.rootPath, paramRef.Ref, map[string]bool{})
-		if err != nil {
-			return nil, "", err
-		}
-	case len(basePath) != 0:
-		externalSource, err := r.hasExternalRefSource(basePath)
-		if err != nil {
-			return nil, "", &parameterValidationLookupError{err: err}
-		}
-		if externalSource {
-			return nil, "", nil
-		}
+
+	if len(basePath) != 0 && basePath[0] == "components" {
 		doc, err := r.loadDocument(r.rootPath)
 		if err != nil {
 			return nil, "", &parameterValidationLookupError{err: err}
 		}
-		paramsNode, err := followYAMLPath(doc, basePath...)
+		paramNode, filePath, err = r.followSourcePath(r.rootPath, doc, basePath, map[string]bool{})
 		if err != nil {
 			return nil, "", &parameterValidationLookupError{err: err}
 		}
-		paramNode, filePath, err = r.findParameterNode(paramsNode, r.rootPath, paramRef)
+	} else {
+		doc, err := r.loadDocument(r.rootPath)
+		if err != nil {
+			return nil, "", &parameterValidationLookupError{err: err}
+		}
+		paramsNode, currentFile, err := r.followSourcePath(r.rootPath, doc, basePath, map[string]bool{})
+		if err != nil {
+			return nil, "", &parameterValidationLookupError{err: err}
+		}
+		paramNode, filePath, err = r.findParameterNode(paramsNode, currentFile, paramRef)
 		if err != nil {
 			return nil, "", err
 		}
-	default:
-		return nil, "", nil
 	}
+
 	paramNode, filePath, err = r.resolveParameterNode(filePath, paramNode, map[string]bool{})
 	if err != nil {
 		return nil, "", err
@@ -328,23 +344,7 @@ func (r *parameterValidationResolver) parameterTypeSchemaNode(paramRef *openapi3
 	if paramRef == nil || paramRef.Value == nil {
 		return nil, "", nil
 	}
-	if paramRef.Ref != "" || len(basePath) == 0 || basePath[0] != "components" {
-		return r.parameterSchemaNode(paramRef, basePath, index)
-	}
-
-	doc, err := r.loadDocument(r.rootPath)
-	if err != nil {
-		return nil, "", &parameterValidationLookupError{err: err}
-	}
-	paramNode, err := followYAMLPath(doc, basePath...)
-	if err != nil {
-		return nil, "", &parameterValidationLookupError{err: err}
-	}
-	paramNode, filePath, err := r.resolveParameterNode(r.rootPath, paramNode, map[string]bool{})
-	if err != nil {
-		return nil, "", err
-	}
-	return yamlMapValue(paramNode, "schema"), filePath, nil
+	return r.parameterSchemaNode(paramRef, basePath, index)
 }
 
 func (r *parameterValidationResolver) findParameterNode(paramsNode *yaml.Node, currentFile string, paramRef *openapi3.ParameterRef) (*yaml.Node, string, error) {
@@ -417,45 +417,31 @@ func (r *parameterValidationResolver) resolveParameterNode(currentFile string, n
 	return r.resolveRefNode(currentFile, refNode.Value, seen)
 }
 
-func (r *parameterValidationResolver) hasExternalRefSource(basePath []string) (bool, error) {
-	if len(basePath) == 0 {
-		return false, nil
-	}
-	node, err := r.loadDocument(r.rootPath)
-	if err != nil {
-		return false, err
-	}
-
-	currentFile := r.rootPath
-	seen := map[string]bool{}
-	for _, part := range basePath {
+func (r *parameterValidationResolver) followSourcePath(currentFile string, node *yaml.Node, parts []string, seen map[string]bool) (*yaml.Node, string, error) {
+	var err error
+	for _, part := range parts {
 		node, currentFile, err = r.resolveParameterNode(currentFile, node, seen)
 		if err != nil {
-			return false, err
-		}
-		if currentFile != r.rootPath {
-			return true, nil
+			return nil, "", err
 		}
 
 		switch node.Kind {
 		case yaml.MappingNode:
-			next := yamlMapValue(node, part)
-			if next == nil {
-				return false, nil
+			node = yamlMapValue(node, part)
+			if node == nil {
+				return nil, "", fmt.Errorf("yaml path not found at %q", part)
 			}
-			node = next
 		case yaml.SequenceNode:
 			idx, convErr := strconv.Atoi(part)
 			if convErr != nil || idx < 0 || idx >= len(node.Content) {
-				return false, nil
+				return nil, "", fmt.Errorf("yaml sequence index %q out of range", part)
 			}
 			node = node.Content[idx]
 		default:
-			return false, nil
+			return nil, "", fmt.Errorf("yaml path traversed through non-container node")
 		}
 	}
-
-	return false, nil
+	return node, currentFile, nil
 }
 
 func (r *parameterValidationResolver) resolveSchema(currentFile string, node *yaml.Node, seen map[string]bool) (parameterValidationSchema, error) {
