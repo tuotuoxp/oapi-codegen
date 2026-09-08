@@ -1009,14 +1009,20 @@ func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.Schema
 	if err != nil {
 		return nil, false
 	}
-	effective, err := resolver.resolveSchema(refFile, refNode, map[string]bool{})
-	if err != nil || effective.Type == nil {
-		return nil, false
-	}
+		effective, err := resolver.resolveSchema(refFile, refNode, map[string]bool{})
+		if err != nil || effective.Type == nil || effective.HasAllOf || effective.HasAnyOf || effective.HasOneOf || effective.HasNot {
+			return nil, false
+		}
+		switch *effective.Type {
+		case "string", "integer", "number", "boolean":
+			// ok
+		default:
+			return nil, false
+		}
 
-	if sref.Value != nil && sref.Value.Type != nil && len(sref.Value.Type.Slice()) > 0 {
-		return nil, false
-	}
+		if sref.Value != nil && sref.Value.Type != nil && len(sref.Value.Type.Slice()) > 0 {
+			return nil, false
+		}
 
 	clonedRef := *sref
 	clonedValue := openapi3.NewSchema()
