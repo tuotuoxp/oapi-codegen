@@ -22,7 +22,12 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx *echo.Context) error {
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
     }
-    {{if .HasValidation}}
+    {{if .UsesCustomTypeValidation}}
+    err = {{.CustomTypeValidationCall (printf "ctx.Param(%q)" .ParamName) (printf "&%s" $varName)}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{else if .HasValidation}}
     err = {{.ValidationCall $varName}}
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
@@ -47,7 +52,21 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx *echo.Context) error {
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
     }
-    {{if .HasValidation}}
+    {{if .UsesCustomTypeValidation}}
+    {{if .HasOptionalPointer}}
+    if params.{{.GoName}} != nil {
+        err = {{.CustomTypeValidationCall (printf "ctx.QueryParam(%q)" .ParamName) (printf "params.%s" .GoName)}}
+        if err != nil {
+            return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+        }
+    }
+    {{else}}
+    err = {{.CustomTypeValidationCall (printf "ctx.QueryParam(%q)" .ParamName) (printf "&params.%s" .GoName)}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{end}}
+    {{else if .HasValidation}}
     {{if .RequiresNilCheck}}
     if params.{{.GoName}} != nil {
         err = {{.ValidationCall (printf "*params.%s" .GoName)}}
@@ -104,7 +123,12 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx *echo.Context) error {
         if err != nil {
             return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
         }
-        {{if .HasValidation}}
+        {{if .UsesCustomTypeValidation}}
+        err = {{.CustomTypeValidationCall "valueList[0]" (printf "&%s" .GoName)}}
+        if err != nil {
+            return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+        }
+        {{else if .HasValidation}}
         err = {{.ValidationCall .GoName}}
         if err != nil {
             return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
@@ -142,7 +166,12 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx *echo.Context) error {
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
     }
-    {{if .HasValidation}}
+    {{if .UsesCustomTypeValidation}}
+    err = {{.CustomTypeValidationCall "cookie.Value" "&value"}}
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
+    }
+    {{else if .HasValidation}}
     err = {{.ValidationCall "value"}}
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))

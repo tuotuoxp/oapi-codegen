@@ -1,0 +1,7 @@
+type: integer
+minimum: 2
+maximum: 6
+exclusiveMinimum: true
+enum:
+  - 3
+  - 5

@@ -2,7 +2,6 @@ package codegen
 
 import (
 	"fmt"
-	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,23 +17,23 @@ type ParameterValidationPlan struct {
 	SkipReason    string
 	Kind          string
 
-	HasMinLength bool
-	MinLength    uint64
-	HasMaxLength bool
-	MaxLength    uint64
-	HasPattern   bool
-	Pattern      string
+	HasMinLength  bool
+	MinLength     uint64
+	HasMaxLength  bool
+	MaxLength     uint64
+	HasPattern    bool
+	Pattern       string
 	HasStringEnum bool
-	StringEnum   []string
+	StringEnum    []string
 
-	HasMinimum        bool
-	Minimum           float64
-	ExclusiveMinimum  bool
-	HasMaximum        bool
-	Maximum           float64
-	ExclusiveMaximum  bool
-	HasNumberEnum     bool
-	NumberEnum        []float64
+	HasMinimum       bool
+	Minimum          float64
+	ExclusiveMinimum bool
+	HasMaximum       bool
+	Maximum          float64
+	ExclusiveMaximum bool
+	HasNumberEnum    bool
+	NumberEnum       []float64
 }
 
 func (p ParameterValidationPlan) HasValidation() bool {
@@ -53,6 +52,10 @@ func (p ParameterValidationPlan) HasValidation() bool {
 
 func (pd ParameterDefinition) HasValidation() bool {
 	return pd.Validation.HasValidation()
+}
+
+func (pd ParameterDefinition) UsesCustomTypeValidation() bool {
+	return pd.Validation.UseCustomType
 }
 
 func (pd ParameterDefinition) ValidationCall(valueExpr string) string {
@@ -89,6 +92,10 @@ func (pd ParameterDefinition) ValidationCall(valueExpr string) string {
 	default:
 		return ""
 	}
+}
+
+func (pd ParameterDefinition) CustomTypeValidationCall(rawValueExpr, targetExpr string) string {
+	return fmt.Sprintf(`validateParamCustomType(%q, %s, %s)`, pd.ParamName, rawValueExpr, targetExpr)
 }
 
 type parameterValidationSchema struct {
@@ -281,7 +288,6 @@ func (r *parameterValidationResolver) resolveRefNode(currentFile string, ref str
 		return nil, "", fmt.Errorf("parameter schema reference cycle detected at %s", ref)
 	}
 	seen[visitKey] = true
-	defer delete(seen, visitKey)
 
 	doc, err := r.loadDocument(targetFile)
 	if err != nil {
@@ -358,7 +364,7 @@ func buildParameterValidationPlanFromLoadedSchema(sref *openapi3.SchemaRef) (Par
 	if v, ok := extensions[extPropGoType].(string); ok && v != "" {
 		effective.XGoType = &v
 	}
-	if v, ok := extensions[extPropGoTypeImport]; ok {
+	if v, ok := extensions[extPropGoImport]; ok {
 		effective.XGoTypeImport = v
 	}
 	if v, ok := extensions[extPropGoRef]; ok {
@@ -470,7 +476,7 @@ func parseParameterValidationSchema(node *yaml.Node) (parameterValidationSchema,
 	out.ExclusiveMinimum = yamlMapBool(node, "exclusiveMinimum")
 	out.ExclusiveMaximum = yamlMapBool(node, "exclusiveMaximum")
 	out.XGoType = yamlMapString(node, extPropGoType)
-	if v := yamlMapValue(node, extPropGoTypeImport); v != nil {
+	if v := yamlMapValue(node, extPropGoImport); v != nil {
 		var decoded any
 		if err := v.Decode(&decoded); err != nil {
 			return out, err
@@ -669,15 +675,4 @@ func goFloat64SliceLiteral(values []float64) string {
 		out[i] = strconv.FormatFloat(value, 'f', -1, 64)
 	}
 	return "[]float64{" + strings.Join(out, ", ") + "}"
-}
-
-func validateParamString(_ string, _ string, _ uint64, _ bool, _ uint64, _ bool, _ string, _ bool, _ []string, _ bool) error {
-	return nil
-}
-
-func validateParamNumber(_ string, value float64, _ float64, _ bool, _ bool, _ float64, _ bool, _ bool, _ []float64, _ bool) error {
-	if math.IsNaN(value) {
-		return fmt.Errorf("numeric parameter value is NaN")
-	}
-	return nil
 }

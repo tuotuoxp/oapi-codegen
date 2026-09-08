@@ -32,7 +32,14 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx iris.Context) {
         ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
         return
     }
-    {{if .HasValidation}}
+    {{if .UsesCustomTypeValidation}}
+    err = {{.CustomTypeValidationCall (printf "ctx.Params().Get(%q)" .ParamName) (printf "&%s" $varName)}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{else if .HasValidation}}
     err = {{.ValidationCall $varName}}
     if err != nil {
         ctx.StatusCode(http.StatusBadRequest)
@@ -61,7 +68,25 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx iris.Context) {
         ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
         return
     }
-    {{if .HasValidation}}
+    {{if .UsesCustomTypeValidation}}
+    {{if .HasOptionalPointer}}
+    if params.{{.GoName}} != nil {
+        err = {{.CustomTypeValidationCall (printf "ctx.URLParam(%q)" .ParamName) (printf "params.%s" .GoName)}}
+        if err != nil {
+            ctx.StatusCode(http.StatusBadRequest)
+            ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+            return
+        }
+    }
+    {{else}}
+    err = {{.CustomTypeValidationCall (printf "ctx.URLParam(%q)" .ParamName) (printf "&params.%s" .GoName)}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{end}}
+    {{else if .HasValidation}}
     {{if .RequiresNilCheck}}
     if params.{{.GoName}} != nil {
         err = {{.ValidationCall (printf "*params.%s" .GoName)}}
@@ -132,7 +157,14 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx iris.Context) {
             ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
             return
         }
-        {{if .HasValidation}}
+        {{if .UsesCustomTypeValidation}}
+        err = {{.CustomTypeValidationCall "valueList[0]" (printf "&%s" .GoName)}}
+        if err != nil {
+            ctx.StatusCode(http.StatusBadRequest)
+            ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+            return
+        }
+        {{else if .HasValidation}}
         err = {{.ValidationCall .GoName}}
         if err != nil {
             ctx.StatusCode(http.StatusBadRequest)
@@ -180,7 +212,14 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx iris.Context) {
         ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
         return
     }
-    {{if .HasValidation}}
+    {{if .UsesCustomTypeValidation}}
+    err = {{.CustomTypeValidationCall "cookie" "&value"}}
+    if err != nil {
+        ctx.StatusCode(http.StatusBadRequest)
+        ctx.Writef("Invalid format for parameter {{.ParamName}}: %s", err)
+        return
+    }
+    {{else if .HasValidation}}
     err = {{.ValidationCall "value"}}
     if err != nil {
         ctx.StatusCode(http.StatusBadRequest)

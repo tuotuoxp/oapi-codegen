@@ -1,0 +1,105 @@
+openapi: 3.0.3
+info:
+  title: parameter validation
+  version: "1.0"
+paths:
+  /different:
+    get:
+      operationId: getDifferent
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/string-base.yaml
+            maxLength: 5
+      responses:
+        "200":
+          description: ok
+  /override:
+    get:
+      operationId: getOverride
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/string-base.yaml
+            minLength: 3
+      responses:
+        "200":
+          description: ok
+  /chain:
+    get:
+      operationId: getChain
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/string-top.yaml
+      responses:
+        "200":
+          description: ok
+  /ref-param:
+    get:
+      operationId: getRefParam
+      parameters:
+        - $ref: "#/components/parameters/Reffed"
+      responses:
+        "200":
+          description: ok
+  /numeric/{id}:
+    get:
+      operationId: getNumeric
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: ./schemas/integer-range.yaml
+      responses:
+        "200":
+          description: ok
+  /custom:
+    get:
+      operationId: getCustom
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/custom-string.yaml
+      responses:
+        "200":
+          description: ok
+  /unsupported:
+    get:
+      operationId: getUnsupported
+      parameters:
+        - name: array_param
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: one_of_param
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: string
+              - type: integer
+      responses:
+        "200":
+          description: ok
+components:
+  parameters:
+    Reffed:
+      name: ref_q
+      in: query
+      required: true
+      schema:
+        $ref: ./schemas/string-base.yaml
+        pattern: ^[A-Z]+$

@@ -1,0 +1,6 @@
+type: string
+minLength: 3
+pattern: ^[a-z]+$
+enum:
+  - abc
+  - abcd

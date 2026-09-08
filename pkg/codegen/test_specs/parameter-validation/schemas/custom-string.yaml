@@ -1,0 +1,4 @@
+type: string
+x-go-type: CustomCode
+pattern: ^[A-Z]+$
+minLength: 4

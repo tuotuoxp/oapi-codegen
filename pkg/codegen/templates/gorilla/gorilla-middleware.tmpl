@@ -35,7 +35,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(w http.ResponseWriter, r *http.Requ
     siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
     return
   }
-  {{if .HasValidation}}
+  {{if .UsesCustomTypeValidation}}
+  err = {{.CustomTypeValidationCall (printf "mux.Vars(r)[%q]" .ParamName) (printf "&%s" $varName)}}
+  if err != nil {
+    siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+    return
+  }
+  {{else if .HasValidation}}
   err = {{.ValidationCall $varName}}
   if err != nil {
     siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
@@ -95,7 +101,23 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(w http.ResponseWriter, r *http.Requ
         }
         return
       }
-      {{if .HasValidation}}
+      {{if .UsesCustomTypeValidation}}
+      {{if .HasOptionalPointer}}
+      if params.{{.GoName}} != nil {
+        err = {{.CustomTypeValidationCall (printf "r.URL.Query().Get(%q)" .ParamName) (printf "params.%s" .GoName)}}
+        if err != nil {
+          siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+          return
+        }
+      }
+      {{else}}
+      err = {{.CustomTypeValidationCall (printf "r.URL.Query().Get(%q)" .ParamName) (printf "&params.%s" .GoName)}}
+      if err != nil {
+        siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+        return
+      }
+      {{end}}
+      {{else if .HasValidation}}
       {{if .RequiresNilCheck}}
       if params.{{.GoName}} != nil {
         err = {{.ValidationCall (printf "*params.%s" .GoName)}}
@@ -145,7 +167,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(w http.ResponseWriter, r *http.Requ
             siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
             return
           }
-          {{if .HasValidation}}
+          {{if .UsesCustomTypeValidation}}
+          err = {{.CustomTypeValidationCall "valueList[0]" (printf "&%s" .GoName)}}
+          if err != nil {
+            siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+            return
+          }
+          {{else if .HasValidation}}
           err = {{.ValidationCall .GoName}}
           if err != nil {
             siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
@@ -201,7 +229,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(w http.ResponseWriter, r *http.Requ
           siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
           return
         }
-        {{if .HasValidation}}
+        {{if .UsesCustomTypeValidation}}
+        err = {{.CustomTypeValidationCall "cookie.Value" "&value"}}
+        if err != nil {
+          siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})
+          return
+        }
+        {{else if .HasValidation}}
         err = {{.ValidationCall "value"}}
         if err != nil {
           siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "{{.ParamName}}", Err: err})

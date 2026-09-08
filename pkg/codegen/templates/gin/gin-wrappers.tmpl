@@ -36,7 +36,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *gin.Context) {
     siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
     return
   }
-  {{if .HasValidation}}
+  {{if .UsesCustomTypeValidation}}
+  err = {{.CustomTypeValidationCall (printf "c.Param(%q)" .ParamName) (printf "&%s" $varName)}}
+  if err != nil {
+    siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+    return
+  }
+  {{else if .HasValidation}}
   err = {{.ValidationCall $varName}}
   if err != nil {
     siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
@@ -88,7 +94,23 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *gin.Context) {
         siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
         return
       }
-      {{if .HasValidation}}
+      {{if .UsesCustomTypeValidation}}
+      {{if .HasOptionalPointer}}
+      if params.{{.GoName}} != nil {
+        err = {{.CustomTypeValidationCall (printf "c.Query(%q)" .ParamName) (printf "params.%s" .GoName)}}
+        if err != nil {
+          siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+          return
+        }
+      }
+      {{else}}
+      err = {{.CustomTypeValidationCall (printf "c.Query(%q)" .ParamName) (printf "&params.%s" .GoName)}}
+      if err != nil {
+        siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+        return
+      }
+      {{end}}
+      {{else if .HasValidation}}
       {{if .RequiresNilCheck}}
       if params.{{.GoName}} != nil {
         err = {{.ValidationCall (printf "*params.%s" .GoName)}}
@@ -138,7 +160,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *gin.Context) {
             siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
             return
           }
-          {{if .HasValidation}}
+          {{if .UsesCustomTypeValidation}}
+          err = {{.CustomTypeValidationCall "valueList[0]" (printf "&%s" .GoName)}}
+          if err != nil {
+            siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+            return
+          }
+          {{else if .HasValidation}}
           err = {{.ValidationCall .GoName}}
           if err != nil {
             siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
@@ -192,7 +220,13 @@ func (siw *ServerInterfaceWrapper) {{$opid}}(c *gin.Context) {
             siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
             return
         }
-        {{if .HasValidation}}
+        {{if .UsesCustomTypeValidation}}
+        err = {{.CustomTypeValidationCall "cookie" "&value"}}
+        if err != nil {
+            siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)
+            return
+        }
+        {{else if .HasValidation}}
         err = {{.ValidationCall "value"}}
         if err != nil {
             siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter {{.ParamName}}: %w", err), http.StatusBadRequest)

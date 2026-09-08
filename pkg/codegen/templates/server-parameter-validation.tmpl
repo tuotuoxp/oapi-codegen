@@ -54,3 +54,25 @@ func validateParamNumber(paramName string, value float64, minimum float64, hasMi
 	}
 	return nil
 }
+
+func validateParamCustomType(paramName string, value string, dest any) error {
+	if tu, ok := dest.(encoding.TextUnmarshaler); ok {
+		if err := tu.UnmarshalText([]byte(value)); err != nil {
+			return fmt.Errorf("parameter %s: %w", paramName, err)
+		}
+		return nil
+	}
+	if ju, ok := dest.(json.Unmarshaler); ok {
+		if err := ju.UnmarshalJSON([]byte(value)); err == nil {
+			return nil
+		}
+		quoted, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("parameter %s: %w", paramName, err)
+		}
+		if err := ju.UnmarshalJSON(quoted); err != nil {
+			return fmt.Errorf("parameter %s: %w", paramName, err)
+		}
+	}
+	return nil
+}

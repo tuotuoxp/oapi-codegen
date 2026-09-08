@@ -1,0 +1,5 @@
+$ref: ./string-mid.yaml
+minLength: 3
+enum:
+  - foo
+  - bar

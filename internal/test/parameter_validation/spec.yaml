@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: parameter validation
+  version: "1.0"
+paths:
+  /validated-string:
+    get:
+      operationId: getValidatedString
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/string-rule.yaml
+            maxLength: 5
+      responses:
+        "204":
+          description: ok
+  /validated-number/{id}:
+    get:
+      operationId: getValidatedNumber
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: ./schemas/integer-rule.yaml
+      responses:
+        "204":
+          description: ok
+  /custom:
+    get:
+      operationId: getCustom
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            $ref: ./schemas/custom-code.yaml
+      responses:
+        "204":
+          description: ok
