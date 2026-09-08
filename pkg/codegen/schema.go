@@ -1002,6 +1002,9 @@ func resolveParameterSchemaRefForType(paramRef *openapi3.ParameterRef, basePath 
 	if paramRef == nil || paramRef.Value == nil || paramRef.Value.Schema == nil || globalState.options.InputSpec == "" {
 		return nil, false
 	}
+	if paramRef.Value.Schema.Ref == "" {
+		return nil, false
+	}
 
 	resolver, err := newParameterValidationResolver(globalState.options.InputSpec)
 	if err != nil {
