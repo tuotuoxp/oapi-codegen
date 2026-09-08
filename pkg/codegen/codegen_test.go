@@ -167,10 +167,10 @@ func TestGoTypeImport(t *testing.T) {
 		`github.com/mailru/easyjson`,           // direct parameters - query
 		`github.com/subosito/gotenv`,           // direct request body
 		`github.com/gorilla/schema`,            // direct parameters - header
-		`github.com/gorilla/mux`,              // component parameters - header
-		`github.com/gorilla/sessions`,         // component parameters - cookie
-		`resty "github.com/go-resty/resty"`,   // component parameters - header (x-go-ref)
-		`jwt "github.com/golang-jwt/jwt"`,     // component parameters - cookie (x-go-ref)
+		`github.com/gorilla/mux`,               // component parameters - header
+		`github.com/gorilla/sessions`,          // component parameters - cookie
+		`resty "github.com/go-resty/resty"`,    // component parameters - header (x-go-ref)
+		`jwt "github.com/golang-jwt/jwt"`,      // component parameters - cookie (x-go-ref)
 	}
 
 	// Check import
@@ -510,6 +510,54 @@ func TestNestedParameterRefsAndParameterTags(t *testing.T) {
 
 	assert.Contains(t, code, "type CreateItemJSONBody struct {")
 	assert.Contains(t, code, "Name string `json:\"name\"`")
+}
+
+func TestRecursiveParameterRefsGenerateConcreteTypes(t *testing.T) {
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			ChiServer: true,
+			Models:    true,
+		},
+		InputSpec: "test_specs/recursive-parameter-refs/spec.yaml",
+	}
+	swagger, err := util.LoadSwagger(opts.InputSpec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	require.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	assert.Contains(t, code, "type ReusableThreeLevel = string")
+	assert.Contains(t, code, "type ReusableExternal = string")
+
+	assert.Contains(t, code, "GetTwoLevel(w http.ResponseWriter, r *http.Request, id int64)")
+	assert.Contains(t, code, "var id int64")
+	assert.NotContains(t, code, "var id interface{}")
+
+	assert.Contains(t, code, "type GetThreeLevelParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Q\s+string\b`), code)
+
+	assert.Contains(t, code, "type GetMixedParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Code\s+GetMixedParamsCode\b`), code)
+	assert.Contains(t, code, "type GetMixedParamsCode string")
+	assert.Contains(t, code, `validateParamString("code", string(params.Code), 3, true, 8, true, "^[a-z]+$", true, []string{"foo", "bar"}, true)`)
+
+	assert.Contains(t, code, "GetExternal(w http.ResponseWriter, r *http.Request, externalId string)")
+	assert.Contains(t, code, "var externalId string")
+	assert.NotContains(t, code, "var externalId interface{}")
+
+	assert.Contains(t, code, "type GetSingleLevelParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Trace\s+string\b`), code)
+
+	assert.Contains(t, code, "type GetCycleParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Loop\s+interface\{\}`), code)
+
+	assert.Contains(t, code, "type GetUnknownParams struct {")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Passthrough\s+interface\{\}`), code)
 }
 
 //go:embed test_spec.yaml

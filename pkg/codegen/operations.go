@@ -31,11 +31,11 @@ import (
 )
 
 type ParameterDefinition struct {
-	ParamName string // The original json parameter name, eg param_name
-	In        string // Where the parameter is defined - path, header, cookie, query
-	Required  bool   // Is this a required parameter?
-	Spec      *openapi3.Parameter
-	Schema    Schema
+	ParamName  string // The original json parameter name, eg param_name
+	In         string // Where the parameter is defined - path, header, cookie, query
+	Required   bool   // Is this a required parameter?
+	Spec       *openapi3.Parameter
+	Schema     Schema
 	Validation ParameterValidationPlan
 }
 
@@ -252,7 +252,7 @@ func DescribeParameters(params openapi3.Parameters, path []string, rawBasePath [
 	for i, paramOrRef := range params {
 		param := paramOrRef.Value
 
-		goType, err := paramToGoType(param, append(path, param.Name))
+		goType, err := paramRefToGoType(paramOrRef, append(path, param.Name), rawBasePath, i)
 		if err != nil {
 			return nil, fmt.Errorf("error generating type for param (%s): %s",
 				param.Name, err)
@@ -335,9 +335,9 @@ type OperationDefinition struct {
 	Method              string                  // GET, POST, DELETE, etc.
 	Path                string                  // The Swagger path for the operation, like /resource/{id}
 	Spec                *openapi3.Operation
-	IsAlias             bool                    // True when this path is a $ref alias of another path item
-	AliasTarget         string                  // When IsAlias is true, this is the OperationId of the canonical operation (for route registration to reference the correct wrapper)
-	PathItemRef         string                  // The path item's $ref (if any); used to qualify externally-loaded schemas referenced from this operation's responses
+	IsAlias             bool   // True when this path is a $ref alias of another path item
+	AliasTarget         string // When IsAlias is true, this is the OperationId of the canonical operation (for route registration to reference the correct wrapper)
+	PathItemRef         string // The path item's $ref (if any); used to qualify externally-loaded schemas referenced from this operation's responses
 }
 
 // HandlerName returns the OperationId to use when referencing the server-side

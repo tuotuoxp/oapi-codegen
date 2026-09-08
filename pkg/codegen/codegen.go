@@ -711,7 +711,7 @@ func GenerateTypesForParameters(t *template.Template, params map[string]*openapi
 	for _, paramName := range SortedMapKeys(params) {
 		paramOrRef := params[paramName]
 
-		goType, err := paramToGoType(paramOrRef.Value, nil)
+		goType, err := paramRefToGoType(paramOrRef, nil, []string{"components", "parameters", paramName}, 0)
 		if err != nil {
 			return nil, fmt.Errorf("error generating Go type for schema in parameter %s: %w", paramName, err)
 		}

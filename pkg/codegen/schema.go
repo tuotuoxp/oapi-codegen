@@ -949,27 +949,29 @@ func GenParamStructFromSchema(schema Schema) string {
 // This constructs a Go type for a parameter, looking at either the schema or
 // the content, whichever is available
 func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
+	return paramRefToGoType(&openapi3.ParameterRef{Value: param}, path, nil, 0)
+}
+
+func paramRefToGoType(paramRef *openapi3.ParameterRef, path []string, basePath []string, index int) (Schema, error) {
+	if paramRef == nil || paramRef.Value == nil {
+		return Schema{}, fmt.Errorf("parameter is nil")
+	}
+	param := paramRef.Value
 	if param.Content == nil && param.Schema == nil {
 		return Schema{}, fmt.Errorf("parameter '%s' has no schema or content", param.Name)
 	}
 
 	// We can process the schema through the generic schema processor
 	if param.Schema != nil {
-		goSchema, err := GenerateGoSchema(param.Schema, path)
-		if err != nil {
-			return Schema{}, err
+		schemaRef := param.Schema
+		if resolvedSchemaRef, ok := resolveParameterSchemaRefForType(paramRef, basePath, index); ok {
+			schemaRef = resolvedSchemaRef
+		} else if fallbackSchemaRef, ok := unresolvedParameterSchemaFallbackRef(schemaRef); ok {
+			return GenerateGoSchema(fallbackSchemaRef, path)
+		} else if schemaRef.Value == nil {
+			schemaRef = openapi3.NewSchemaRef("", openapi3.NewSchema())
 		}
-
-		if goSchema.GoType == "interface{}" {
-			if resolvedSchemaRef, ok := resolveNestedParameterSchemaRef(param.Schema); ok {
-				resolvedSchema, err := GenerateGoSchema(resolvedSchemaRef, path)
-				if err == nil {
-					return resolvedSchema, nil
-				}
-			}
-		}
-
-		return goSchema, nil
+		return GenerateGoSchema(schemaRef, path)
 	}
 
 	// At this point, we have a content type. We know how to deal with
@@ -996,8 +998,11 @@ func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
 	return GenerateGoSchema(mt.Schema, path)
 }
 
-func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.SchemaRef, bool) {
-	if sref == nil || sref.Ref == "" || globalState.options.InputSpec == "" {
+func resolveParameterSchemaRefForType(paramRef *openapi3.ParameterRef, basePath []string, index int) (*openapi3.SchemaRef, bool) {
+	if paramRef == nil || paramRef.Value == nil || paramRef.Value.Schema == nil || globalState.options.InputSpec == "" {
+		return nil, false
+	}
+	if paramRef.Value.Schema.Ref == "" {
 		return nil, false
 	}
 
@@ -1005,37 +1010,117 @@ func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.Schema
 	if err != nil {
 		return nil, false
 	}
-	refNode, refFile, err := resolver.resolveRefNode(resolver.rootPath, sref.Ref, map[string]bool{})
+	schemaNode, currentFile, err := resolver.parameterTypeSchemaNode(paramRef, basePath, index)
 	if err != nil {
+		var lookupErr *parameterValidationLookupError
+		if !errors.As(err, &lookupErr) {
+			return nil, false
+		}
+	}
+
+	var effective parameterValidationSchema
+	switch {
+	case schemaNode != nil:
+		effective, err = resolver.resolveSchema(currentFile, schemaNode, map[string]bool{})
+	default:
+		effective, err = resolver.resolveSchemaRef(resolver.rootPath, paramRef.Value.Schema, map[string]bool{})
+	}
+	if err != nil || effective.Type == nil || effective.HasAllOf || effective.HasAnyOf || effective.HasOneOf || effective.HasNot {
 		return nil, false
 	}
-		effective, err := resolver.resolveSchema(refFile, refNode, map[string]bool{})
-		if err != nil || effective.Type == nil || effective.HasAllOf || effective.HasAnyOf || effective.HasOneOf || effective.HasNot {
-			return nil, false
-		}
-		switch *effective.Type {
-		case "string", "integer", "number", "boolean":
-			// ok
-		default:
-			return nil, false
-		}
-
-		if sref.Value != nil && sref.Value.Type != nil && len(sref.Value.Type.Slice()) > 0 {
-			return nil, false
-		}
-
+	switch *effective.Type {
+	case "string", "integer", "number", "boolean":
+		// ok
+	default:
+		return nil, false
+	}
+	sref := paramRef.Value.Schema
 	clonedRef := *sref
+	clonedRef.Ref = ""
 	clonedValue := openapi3.NewSchema()
 	if sref.Value != nil {
 		cloned := *sref.Value
 		clonedValue = &cloned
 	}
-	resolvedType := openapi3.Types{*effective.Type}
-	clonedValue.Type = &resolvedType
+	if clonedValue.Type == nil || len(clonedValue.Type.Slice()) == 0 {
+		resolvedType := openapi3.Types{*effective.Type}
+		clonedValue.Type = &resolvedType
+	}
 	if clonedValue.Format == "" && effective.Format != nil {
 		clonedValue.Format = *effective.Format
 	}
+	if clonedValue.MinLength == 0 && effective.MinLength != nil {
+		clonedValue.MinLength = *effective.MinLength
+	}
+	if clonedValue.MaxLength == nil && effective.MaxLength != nil {
+		maxLength := *effective.MaxLength
+		clonedValue.MaxLength = &maxLength
+	}
+	if clonedValue.Pattern == "" && effective.Pattern != nil {
+		clonedValue.Pattern = *effective.Pattern
+	}
+	if len(clonedValue.Enum) == 0 && effective.HasEnum {
+		clonedValue.Enum = append([]any(nil), effective.Enum...)
+	}
+	if clonedValue.Min == nil && effective.Minimum != nil {
+		minimum := *effective.Minimum
+		clonedValue.Min = &minimum
+		if effective.ExclusiveMinimum != nil {
+			clonedValue.ExclusiveMin = *effective.ExclusiveMinimum
+		}
+	}
+	if clonedValue.Max == nil && effective.Maximum != nil {
+		maximum := *effective.Maximum
+		clonedValue.Max = &maximum
+		if effective.ExclusiveMaximum != nil {
+			clonedValue.ExclusiveMax = *effective.ExclusiveMaximum
+		}
+	}
 	clonedRef.Value = clonedValue
+	if effective.XGoType != nil || effective.XGoTypeImport != nil || effective.XGoRef != nil {
+		clonedExt := map[string]any{}
+		for k, v := range clonedRef.Extensions {
+			clonedExt[k] = v
+		}
+		if _, ok := clonedExt[extPropGoType]; !ok && effective.XGoType != nil {
+			clonedExt[extPropGoType] = *effective.XGoType
+		}
+		if _, ok := clonedExt[extPropGoImport]; !ok && effective.XGoTypeImport != nil {
+			clonedExt[extPropGoImport] = effective.XGoTypeImport
+		}
+		if _, ok := clonedExt[extPropGoRef]; !ok && effective.XGoRef != nil {
+			clonedExt[extPropGoRef] = effective.XGoRef
+		}
+		clonedRef.Extensions = clonedExt
+	}
+	return &clonedRef, true
+}
+
+func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.SchemaRef, bool) {
+	if sref == nil {
+		return nil, false
+	}
+	return resolveParameterSchemaRefForType(&openapi3.ParameterRef{
+		Value: &openapi3.Parameter{Schema: sref},
+	}, nil, 0)
+}
+
+func unresolvedParameterSchemaFallbackRef(sref *openapi3.SchemaRef) (*openapi3.SchemaRef, bool) {
+	if sref == nil || sref.Ref == "" {
+		return nil, false
+	}
+	clonedRef := *sref
+	clonedRef.Ref = ""
+	if sref.Value != nil {
+		clonedValue := *sref.Value
+		clonedRef.Value = &clonedValue
+	} else {
+		clonedRef.Value = openapi3.NewSchema()
+	}
+	fallbackSchema, err := GenerateGoSchema(&clonedRef, nil)
+	if err != nil || fallbackSchema.GoType != "interface{}" {
+		return nil, false
+	}
 	return &clonedRef, true
 }
 
