@@ -209,7 +209,7 @@ func (r *parameterValidationResolver) resolvePlan(paramRef *openapi3.ParameterRe
 		return ParameterValidationPlan{}, err
 	}
 	if schemaNode == nil {
-		return ParameterValidationPlan{}, nil
+		return buildParameterValidationPlanFromLoadedSchema(paramRef.Value.Schema)
 	}
 	effective, err := r.resolveSchema(schemaFile, schemaNode, map[string]bool{})
 	if err != nil {
