@@ -341,21 +341,25 @@ func captureStderr(t *testing.T, fn func()) string {
 	originalStderr := os.Stderr
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
+
 	os.Stderr = w
+	defer func() {
+		os.Stderr = originalStderr
+		_ = w.Close()
+	}()
 
 	done := make(chan string, 1)
 	go func() {
 		var b bytes.Buffer
 		_, _ = io.Copy(&b, r)
+		_ = r.Close()
 		done <- b.String()
 	}()
 
 	fn()
 
-	require.NoError(t, w.Close())
+	_ = w.Close()
 	os.Stderr = originalStderr
 
-	output := <-done
-	require.NoError(t, r.Close())
-	return output
+	return <-done
 }
