@@ -229,7 +229,7 @@ func TestGenerateServerParameterValidationCodeWithIncludeArrayHeaderParameter(t 
 	_, err = format.Source([]byte(code))
 	require.NoError(t, err)
 
-	assert.Contains(t, code, `validateParamString("X-Header", string(params.XHeader), 3, true, 8, true, "^[A-Z]+$", true, []string{"FOO", "BAR"}, true)`)
+	assert.Contains(t, code, `validateParamString("X-Header", string(XHeader), 3, true, 8, true, "^[A-Z]+$", true, []string{"FOO", "BAR"}, true)`)
 }
 
 func TestBuildParameterValidationPlanSkipsUnsupportedSchemas(t *testing.T) {
