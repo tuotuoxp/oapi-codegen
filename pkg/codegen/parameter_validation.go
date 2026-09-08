@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/oapi-codegen/oapi-codegen/v2/pkg/util"
 	"gopkg.in/yaml.v3"
 )
 
@@ -212,6 +214,18 @@ type parameterValidationResolver struct {
 	docs     map[string]*yaml.Node
 }
 
+type parameterValidationLookupError struct {
+	err error
+}
+
+func (e *parameterValidationLookupError) Error() string {
+	return e.err.Error()
+}
+
+func (e *parameterValidationLookupError) Unwrap() error {
+	return e.err
+}
+
 func newParameterValidationResolver(specPath string) (*parameterValidationResolver, error) {
 	if specPath == "" {
 		return nil, nil
@@ -239,6 +253,11 @@ func (r *parameterValidationResolver) resolvePlan(paramRef *openapi3.ParameterRe
 	}
 	schemaNode, schemaFile, err := r.parameterSchemaNode(paramRef, basePath, index)
 	if err != nil {
+		var lookupErr *parameterValidationLookupError
+		if errors.As(err, &lookupErr) {
+			fmt.Fprintf(os.Stderr, "Warning: failed to resolve original parameter validation source for %q in %q: %v; falling back to resolved schema\n", paramRef.Value.Name, paramRef.Value.In, err)
+			return buildParameterValidationPlanFromLoadedSchema(paramRef.Value.Schema)
+		}
 		return ParameterValidationPlan{}, err
 	}
 	if schemaNode == nil {
@@ -251,7 +270,7 @@ func (r *parameterValidationResolver) resolvePlan(paramRef *openapi3.ParameterRe
 	return buildParameterValidationPlan(effective)
 }
 
-func (r *parameterValidationResolver) parameterSchemaNode(paramRef *openapi3.ParameterRef, basePath []string, index int) (*yaml.Node, string, error) {
+func (r *parameterValidationResolver) parameterSchemaNode(paramRef *openapi3.ParameterRef, basePath []string, _ int) (*yaml.Node, string, error) {
 	var (
 		paramNode *yaml.Node
 		filePath  string
@@ -266,13 +285,16 @@ func (r *parameterValidationResolver) parameterSchemaNode(paramRef *openapi3.Par
 	case len(basePath) != 0:
 		doc, err := r.loadDocument(r.rootPath)
 		if err != nil {
-			return nil, "", err
+			return nil, "", &parameterValidationLookupError{err: err}
 		}
-		paramNode, err = followYAMLPath(doc, append(append([]string{}, basePath...), strconv.Itoa(index))...)
+		paramsNode, err := followYAMLPath(doc, basePath...)
+		if err != nil {
+			return nil, "", &parameterValidationLookupError{err: err}
+		}
+		paramNode, filePath, err = r.findParameterNode(paramsNode, r.rootPath, paramRef)
 		if err != nil {
 			return nil, "", err
 		}
-		filePath = r.rootPath
 	default:
 		return nil, "", nil
 	}
@@ -282,6 +304,67 @@ func (r *parameterValidationResolver) parameterSchemaNode(paramRef *openapi3.Par
 	}
 	return yamlMapValue(paramNode, "schema"), filePath, nil
 }
+
+func (r *parameterValidationResolver) findParameterNode(paramsNode *yaml.Node, currentFile string, paramRef *openapi3.ParameterRef) (*yaml.Node, string, error) {
+	if paramsNode == nil || paramsNode.Kind != yaml.SequenceNode {
+		return nil, "", &parameterValidationLookupError{err: fmt.Errorf("parameter source path did not resolve to a sequence")}
+	}
+
+	var (
+		matchCount int
+		matchNode  *yaml.Node
+	)
+	for _, candidate := range paramsNode.Content {
+		matched, err := r.parameterNodeMatches(candidate, currentFile, paramRef)
+		if err != nil {
+			return nil, "", err
+		}
+		if matched {
+			matchCount++
+			matchNode = candidate
+		}
+	}
+
+	switch matchCount {
+	case 1:
+		return matchNode, currentFile, nil
+	case 0:
+		return nil, "", &parameterValidationLookupError{err: fmt.Errorf("parameter %q in %q not found in source sequence", paramRef.Value.Name, paramRef.Value.In)}
+	default:
+		return nil, "", &parameterValidationLookupError{err: fmt.Errorf("parameter %q in %q matched multiple source entries", paramRef.Value.Name, paramRef.Value.In)}
+	}
+}
+
+func (r *parameterValidationResolver) parameterNodeMatches(node *yaml.Node, currentFile string, paramRef *openapi3.ParameterRef) (bool, error) {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return false, nil
+	}
+	if paramRef.Ref != "" {
+		refNode := yamlMapValue(node, "$ref")
+		return refNode != nil && refNode.Kind == yaml.ScalarNode && refNode.Value == paramRef.Ref, nil
+	}
+
+	refNode := yamlMapValue(node, "$ref")
+	if refNode == nil || refNode.Kind != yaml.ScalarNode {
+		name := yamlMapString(node, "name")
+		in := yamlMapString(node, "in")
+		if name == nil || in == nil {
+			return false, nil
+		}
+		return *name == paramRef.Value.Name && *in == paramRef.Value.In, nil
+	}
+
+	resolvedNode, _, err := r.resolveParameterNode(currentFile, node, map[string]bool{})
+	if err != nil {
+		return false, err
+	}
+
+	name := yamlMapString(resolvedNode, "name")
+	in := yamlMapString(resolvedNode, "in")
+	if name == nil || in == nil {
+		return false, nil
+	}
+	return *name == paramRef.Value.Name && *in == paramRef.Value.In, nil
 
 func (r *parameterValidationResolver) resolveParameterNode(currentFile string, node *yaml.Node, seen map[string]bool) (*yaml.Node, string, error) {
 	refNode := yamlMapValue(node, "$ref")
@@ -337,7 +420,7 @@ func (r *parameterValidationResolver) loadDocument(filePath string) (*yaml.Node,
 	if doc, ok := r.docs[filePath]; ok {
 		return doc, nil
 	}
-	data, err := os.ReadFile(filePath)
+	data, err := util.PreprocessSwaggerIncludes(filePath)
 	if err != nil {
 		return nil, err
 	}

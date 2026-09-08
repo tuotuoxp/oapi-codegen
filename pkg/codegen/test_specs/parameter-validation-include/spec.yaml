@@ -1,0 +1,18 @@
+openapi: 3.0.3
+info:
+  title: parameter validation include
+  version: "1.0"
+paths:
+  /included-header:
+    get:
+      operationId: getIncludedHeader
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - !include_array ./params/headers.yaml
+      responses:
+        "200":
+          description: ok

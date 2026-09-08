@@ -1,0 +1,10 @@
+- name: X-Trace
+  in: header
+  required: false
+  schema:
+    type: string
+- name: X-Header
+  in: header
+  required: true
+  schema:
+    $ref: ../schemas/header-top.yaml
