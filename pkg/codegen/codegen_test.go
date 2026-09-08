@@ -477,5 +477,39 @@ func TestGoRefHeaderExternalJSONOverlay(t *testing.T) {
 		"expected package-qualified type from x-go-ref overlay next to external JSON $ref")
 }
 
+func TestNestedParameterRefsAndParameterTags(t *testing.T) {
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			ChiServer: true,
+			Models:    true,
+		},
+		InputSpec: "test_specs/nested-parameter-refs/spec.yaml",
+	}
+	swagger, err := util.LoadSwagger(opts.InputSpec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	require.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	assert.Contains(t, code, "type GetItemParams struct {")
+	assert.Contains(t, code, "Q int64")
+	assert.Contains(t, code, "XTrace string")
+	assert.Contains(t, code, "Passthrough interface{}")
+	assert.NotContains(t, code, "Q int64 `json:")
+	assert.NotContains(t, code, "XTrace string `json:")
+	assert.NotContains(t, code, "Passthrough interface{} `json:")
+
+	assert.Contains(t, code, "var id int64")
+	assert.NotContains(t, code, "var id interface{}")
+
+	assert.Contains(t, code, "type CreateItemJSONRequestBody struct {")
+	assert.Contains(t, code, "Name string `json:\"name\"`")
+}
+
 //go:embed test_spec.yaml
 var testOpenAPIDefinition string

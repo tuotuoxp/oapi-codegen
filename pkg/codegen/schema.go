@@ -778,8 +778,16 @@ func stringOrEmpty(b bool, s string) string {
 }
 
 // GenFieldsFromProperties produce corresponding field names with JSON annotations,
-// given a list of schema descriptors
+// given a list of schema descriptors.
 func GenFieldsFromProperties(props []Property) []string {
+	return genFieldsFromProperties(props, true)
+}
+
+func GenFieldsFromPropertiesWithoutJSON(props []Property) []string {
+	return genFieldsFromProperties(props, false)
+}
+
+func genFieldsFromProperties(props []Property, includeJSONTag bool) []string {
 	var fields []string
 	for i, p := range props {
 		field := ""
@@ -845,9 +853,11 @@ func GenFieldsFromProperties(props []Property) []string {
 
 		fieldTags := make(map[string]string)
 
-		fieldTags["json"] = p.JsonFieldName +
-			stringOrEmpty(omitEmpty, ",omitempty") +
-			stringOrEmpty(omitZero, ",omitzero")
+		if includeJSONTag {
+			fieldTags["json"] = p.JsonFieldName +
+				stringOrEmpty(omitEmpty, ",omitempty") +
+				stringOrEmpty(omitZero, ",omitzero")
+		}
 
 		if globalState.options.OutputOptions.EnableYamlTags {
 			fieldTags["yaml"] = p.JsonFieldName + stringOrEmpty(omitEmpty, ",omitempty")
@@ -857,9 +867,11 @@ func GenFieldsFromProperties(props []Property) []string {
 		}
 
 		// Support x-go-json-ignore
-		if extension, ok := p.Extensions[extPropGoJsonIgnore]; ok {
-			if goJsonIgnore, err := extParseGoJsonIgnore(extension); err == nil && goJsonIgnore {
-				fieldTags["json"] = "-"
+		if includeJSONTag {
+			if extension, ok := p.Extensions[extPropGoJsonIgnore]; ok {
+				if goJsonIgnore, err := extParseGoJsonIgnore(extension); err == nil && goJsonIgnore {
+					fieldTags["json"] = "-"
+				}
 			}
 		}
 
@@ -868,11 +880,18 @@ func GenFieldsFromProperties(props []Property) []string {
 			if tags, err := extExtraTags(extension); err == nil {
 				keys := SortedMapKeys(tags)
 				for _, k := range keys {
+					if !includeJSONTag && k == "json" {
+						continue
+					}
 					fieldTags[k] = tags[k]
 				}
 			}
 		}
 		// Convert the fieldTags map into Go field annotations.
+		if len(fieldTags) == 0 {
+			fields = append(fields, field)
+			continue
+		}
 		keys := SortedMapKeys(fieldTags)
 		tags := make([]string, len(keys))
 		for i, k := range keys {
@@ -913,6 +932,20 @@ func GenStructFromSchema(schema Schema) string {
 	return strings.Join(objectParts, "\n")
 }
 
+func GenParamStructFromSchema(schema Schema) string {
+	objectParts := []string{"struct {"}
+	objectParts = append(objectParts, GenFieldsFromPropertiesWithoutJSON(schema.Properties)...)
+	if schema.HasAdditionalProperties {
+		objectParts = append(objectParts,
+			fmt.Sprintf("AdditionalProperties map[string]%s", additionalPropertiesType(schema)))
+	}
+	if len(schema.UnionElements) != 0 {
+		objectParts = append(objectParts, "union json.RawMessage")
+	}
+	objectParts = append(objectParts, "}")
+	return strings.Join(objectParts, "\n")
+}
+
 // This constructs a Go type for a parameter, looking at either the schema or
 // the content, whichever is available
 func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
@@ -922,7 +955,21 @@ func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
 
 	// We can process the schema through the generic schema processor
 	if param.Schema != nil {
-		return GenerateGoSchema(param.Schema, path)
+		goSchema, err := GenerateGoSchema(param.Schema, path)
+		if err != nil {
+			return Schema{}, err
+		}
+
+		if goSchema.GoType == "interface{}" {
+			if resolvedSchemaRef, ok := resolveNestedParameterSchemaRef(param.Schema); ok {
+				resolvedSchema, err := GenerateGoSchema(resolvedSchemaRef, path)
+				if err == nil {
+					return resolvedSchema, nil
+				}
+			}
+		}
+
+		return goSchema, nil
 	}
 
 	// At this point, we have a content type. We know how to deal with
@@ -947,6 +994,43 @@ func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
 
 	// For json, we go through the standard schema mechanism
 	return GenerateGoSchema(mt.Schema, path)
+}
+
+func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.SchemaRef, bool) {
+	if sref == nil || sref.Ref == "" || globalState.options.InputSpec == "" {
+		return nil, false
+	}
+
+	resolver, err := newParameterValidationResolver(globalState.options.InputSpec)
+	if err != nil {
+		return nil, false
+	}
+	refNode, refFile, err := resolver.resolveRefNode(resolver.rootPath, sref.Ref, map[string]bool{})
+	if err != nil {
+		return nil, false
+	}
+	effective, err := resolver.resolveSchema(refFile, refNode, map[string]bool{})
+	if err != nil || effective.Type == nil {
+		return nil, false
+	}
+
+	if sref.Value != nil && sref.Value.Type != nil && len(sref.Value.Type.Slice()) > 0 {
+		return nil, false
+	}
+
+	clonedRef := *sref
+	clonedValue := openapi3.NewSchema()
+	if sref.Value != nil {
+		cloned := *sref.Value
+		clonedValue = &cloned
+	}
+	resolvedType := openapi3.Types{*effective.Type}
+	clonedValue.Type = &resolvedType
+	if clonedValue.Format == "" && effective.Format != nil {
+		clonedValue.Format = *effective.Format
+	}
+	clonedRef.Value = clonedValue
+	return &clonedRef, true
 }
 
 func generateUnion(outSchema *Schema, elements openapi3.SchemaRefs, discriminator *openapi3.Discriminator, path []string) error {

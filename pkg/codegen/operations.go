@@ -70,19 +70,12 @@ func (pd ParameterDefinition) ZeroValueIsNil() bool {
 	return strings.HasPrefix(pd.Schema.GoType, "map[")
 }
 
-// JsonTag generates the JSON annotation to map GoType to json type name. If Parameter
-// Foo is marshaled to json as "foo", this will create the annotation
-// 'json:"foo"'
-// It also includes any additional struct tags from x-oapi-codegen-extra-tags
-// at the parameter or schema level (parameter-level takes precedence).
+// JsonTag returns additional tags for strict request object path fields.
+// Parameter fields are not request-body models, so a json tag is not emitted.
+// x-oapi-codegen-extra-tags from schema/parameter level are merged, with
+// parameter-level values taking precedence.
 func (pd *ParameterDefinition) JsonTag() string {
 	fieldTags := make(map[string]string)
-
-	if pd.Required {
-		fieldTags["json"] = pd.ParamName
-	} else {
-		fieldTags["json"] = pd.ParamName + ",omitempty"
-	}
 
 	// Merge x-oapi-codegen-extra-tags from schema level first, then parameter level
 	// so that parameter-level takes precedence.
@@ -106,6 +99,10 @@ func (pd *ParameterDefinition) JsonTag() string {
 	}
 
 	keys := SortedMapKeys(fieldTags)
+	keys = slices.DeleteFunc(keys, func(k string) bool { return k == "json" })
+	if len(keys) == 0 {
+		return ""
+	}
 	tags := make([]string, len(keys))
 	for i, k := range keys {
 		tags[i] = fmt.Sprintf(`%s:"%s"`, k, fieldTags[k])
@@ -1243,7 +1240,7 @@ func GenerateParamsTypes(op OperationDefinition) []TypeDefinition {
 		s.Properties = append(s.Properties, prop)
 	}
 
-	s.GoType = GenStructFromSchema(s)
+	s.GoType = GenParamStructFromSchema(s)
 
 	td := TypeDefinition{
 		TypeName: typeName,
