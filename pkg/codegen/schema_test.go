@@ -570,13 +570,7 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 	})
 	globalState.options.InputSpec = specPath
 
-	paramRefByPathAndName := func(path, name string) (*openapi3.ParameterRef, []string) {
-		t.Helper()
-		for i, p := range swagger.Paths.Value(path).Get.Parameters {
-			if p.Value != nil && p.Value.Name == name {
-				return p, []string{"paths", path, "get", "parameters", strconv.Itoa(i)}
-			}
-		}
+				return p, []string{"paths", path, "get", "parameters"}
 		t.Fatalf("parameter %q not found for path %q", name, path)
 		return nil, nil
 	}
