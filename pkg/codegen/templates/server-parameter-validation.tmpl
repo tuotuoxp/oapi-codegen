@@ -55,6 +55,155 @@ func validateParamNumber(paramName string, value float64, minimum float64, hasMi
 	return nil
 }
 
+func validateParamInteger(paramName string, value any, minimum string, hasMinimum bool, exclusiveMinimum bool, maximum string, hasMaximum bool, exclusiveMaximum bool, enumValues []string, hasEnum bool) error {
+	valueText, ok := normalizeIntegerValue(value)
+	if !ok {
+		return fmt.Errorf("parameter %s has unsupported integer type %T", paramName, value)
+	}
+	if hasMinimum {
+		cmp, ok := compareIntegerStrings(valueText, minimum)
+		if !ok {
+			return fmt.Errorf("parameter %s has invalid minimum %q", paramName, minimum)
+		}
+		if exclusiveMinimum {
+			if cmp <= 0 {
+				return fmt.Errorf("parameter %s must be greater than %s", paramName, minimum)
+			}
+		} else if cmp < 0 {
+			return fmt.Errorf("parameter %s must be greater than or equal to %s", paramName, minimum)
+		}
+	}
+	if hasMaximum {
+		cmp, ok := compareIntegerStrings(valueText, maximum)
+		if !ok {
+			return fmt.Errorf("parameter %s has invalid maximum %q", paramName, maximum)
+		}
+		if exclusiveMaximum {
+			if cmp >= 0 {
+				return fmt.Errorf("parameter %s must be less than %s", paramName, maximum)
+			}
+		} else if cmp > 0 {
+			return fmt.Errorf("parameter %s must be less than or equal to %s", paramName, maximum)
+		}
+	}
+	if hasEnum {
+		for _, enumValue := range enumValues {
+			cmp, ok := compareIntegerStrings(valueText, enumValue)
+			if ok && cmp == 0 {
+				return nil
+			}
+		}
+		return fmt.Errorf("parameter %s must be one of %v", paramName, enumValues)
+	}
+	return nil
+}
+
+func normalizeIntegerValue(value any) (string, bool) {
+	switch v := value.(type) {
+	case int:
+		return fmt.Sprintf("%d", v), true
+	case int8:
+		return fmt.Sprintf("%d", v), true
+	case int16:
+		return fmt.Sprintf("%d", v), true
+	case int32:
+		return fmt.Sprintf("%d", v), true
+	case int64:
+		return fmt.Sprintf("%d", v), true
+	case uint:
+		return fmt.Sprintf("%d", v), true
+	case uint8:
+		return fmt.Sprintf("%d", v), true
+	case uint16:
+		return fmt.Sprintf("%d", v), true
+	case uint32:
+		return fmt.Sprintf("%d", v), true
+	case uint64:
+		return fmt.Sprintf("%d", v), true
+	default:
+		return "", false
+	}
+}
+
+func compareIntegerStrings(left, right string) (int, bool) {
+	leftNorm, ok := normalizeIntegerString(left)
+	if !ok {
+		return 0, false
+	}
+	rightNorm, ok := normalizeIntegerString(right)
+	if !ok {
+		return 0, false
+	}
+	if leftNorm == rightNorm {
+		return 0, true
+	}
+
+	leftNegative := strings.HasPrefix(leftNorm, "-")
+	rightNegative := strings.HasPrefix(rightNorm, "-")
+	if leftNegative != rightNegative {
+		if leftNegative {
+			return -1, true
+		}
+		return 1, true
+	}
+
+	leftDigits := strings.TrimPrefix(leftNorm, "-")
+	rightDigits := strings.TrimPrefix(rightNorm, "-")
+	if len(leftDigits) != len(rightDigits) {
+		if leftNegative {
+			if len(leftDigits) < len(rightDigits) {
+				return 1, true
+			}
+			return -1, true
+		}
+		if len(leftDigits) < len(rightDigits) {
+			return -1, true
+		}
+		return 1, true
+	}
+
+	if leftDigits < rightDigits {
+		if leftNegative {
+			return 1, true
+		}
+		return -1, true
+	}
+	if leftNegative {
+		return -1, true
+	}
+	return 1, true
+}
+
+func normalizeIntegerString(value string) (string, bool) {
+	if value == "" {
+		return "", false
+	}
+	sign := ""
+	switch value[0] {
+	case '-':
+		sign = "-"
+		value = value[1:]
+	case '+':
+		value = value[1:]
+	}
+	if value == "" {
+		return "", false
+	}
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return "", false
+		}
+	}
+	value = strings.TrimLeft(value, "0")
+	if value == "" {
+		return "0", true
+	}
+	if sign == "-" {
+		return "-" + value, true
+	}
+	return value, true
+}
+
 func validateParamCustomType(paramName string, value string, dest any) error {
 	if tu, ok := dest.(encoding.TextUnmarshaler); ok {
 		if err := tu.UnmarshalText([]byte(value)); err != nil {

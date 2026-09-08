@@ -145,7 +145,7 @@ func TestGenerateServerParameterValidationCode(t *testing.T) {
 
 	assert.Contains(t, code, `validateParamString("q", string(params.Q), 1, true, 5, true, "^[a-z]+$", true, nil, false)`)
 	assert.Contains(t, code, `validateParamString("q", string(params.Q), 3, true, 8, true, "^[a-z]+$", true, []string{"foo", "bar"}, true)`)
-	assert.Contains(t, code, `validateParamNumber("id", float64(id), 2.000000, true, true, 6.000000, true, false, []float64{3, 5}, true)`)
+	assert.Contains(t, code, `validateParamInteger("id", id, "2", true, true, "6", true, false, []string{"3", "5"}, true)`)
 	assert.Contains(t, code, `validateParamCustomType("code", r.URL.Query().Get("code"), &params.Code)`)
 	assert.NotContains(t, code, `validateParamString("code"`)
 	assert.NotContains(t, code, `validateParamString("array_param"`)

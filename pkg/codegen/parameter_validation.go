@@ -26,6 +26,15 @@ type ParameterValidationPlan struct {
 	HasStringEnum bool
 	StringEnum    []string
 
+	HasIntegerMinimum       bool
+	IntegerMinimum          string
+	ExclusiveIntegerMinimum bool
+	HasIntegerMaximum       bool
+	IntegerMaximum          string
+	ExclusiveIntegerMaximum bool
+	HasIntegerEnum          bool
+	IntegerEnum             []string
+
 	HasMinimum       bool
 	Minimum          float64
 	ExclusiveMinimum bool
@@ -43,7 +52,9 @@ func (p ParameterValidationPlan) HasValidation() bool {
 	switch p.Kind {
 	case openapi3.TypeString:
 		return p.HasMinLength || p.HasMaxLength || p.HasPattern || p.HasStringEnum
-	case openapi3.TypeInteger, openapi3.TypeNumber:
+	case openapi3.TypeInteger:
+		return p.HasIntegerMinimum || p.HasIntegerMaximum || p.HasIntegerEnum
+	case openapi3.TypeNumber:
 		return p.HasMinimum || p.HasMaximum || p.HasNumberEnum
 	default:
 		return false
@@ -75,7 +86,21 @@ func (pd ParameterDefinition) ValidationCall(valueExpr string) string {
 			goStringSliceLiteral(p.StringEnum),
 			p.HasStringEnum,
 		)
-	case openapi3.TypeInteger, openapi3.TypeNumber:
+	case openapi3.TypeInteger:
+		return fmt.Sprintf(
+			`validateParamInteger(%q, %s, %q, %t, %t, %q, %t, %t, %s, %t)`,
+			pd.ParamName,
+			valueExpr,
+			p.IntegerMinimum,
+			p.HasIntegerMinimum,
+			p.ExclusiveIntegerMinimum,
+			p.IntegerMaximum,
+			p.HasIntegerMaximum,
+			p.ExclusiveIntegerMaximum,
+			goStringSliceLiteral(p.IntegerEnum),
+			p.HasIntegerEnum,
+		)
+	case openapi3.TypeNumber:
 		return fmt.Sprintf(
 			`validateParamNumber(%q, float64(%s), %f, %t, %t, %f, %t, %t, %s, %t)`,
 			pd.ParamName,
@@ -112,6 +137,8 @@ type parameterValidationSchema struct {
 
 	Minimum          *float64
 	Maximum          *float64
+	MinimumText      *string
+	MaximumText      *string
 	ExclusiveMinimum *bool
 	ExclusiveMaximum *bool
 
@@ -151,6 +178,12 @@ func (s parameterValidationSchema) mergedOver(base parameterValidationSchema) pa
 	}
 	if s.Maximum != nil {
 		out.Maximum = s.Maximum
+	}
+	if s.MinimumText != nil {
+		out.MinimumText = s.MinimumText
+	}
+	if s.MaximumText != nil {
+		out.MaximumText = s.MaximumText
 	}
 	if s.ExclusiveMinimum != nil {
 		out.ExclusiveMinimum = s.ExclusiveMinimum
@@ -353,6 +386,14 @@ func buildParameterValidationPlanFromLoadedSchema(sref *openapi3.SchemaRef) (Par
 	effective.Minimum = sref.Value.Min
 	effective.Maximum = sref.Value.Max
 	if sref.Value.Min != nil {
+		v := strconv.FormatFloat(*sref.Value.Min, 'f', -1, 64)
+		effective.MinimumText = &v
+	}
+	if sref.Value.Max != nil {
+		v := strconv.FormatFloat(*sref.Value.Max, 'f', -1, 64)
+		effective.MaximumText = &v
+	}
+	if sref.Value.Min != nil {
 		v := sref.Value.ExclusiveMin
 		effective.ExclusiveMinimum = &v
 	}
@@ -416,7 +457,36 @@ func buildParameterValidationPlan(schema parameterValidationSchema) (ParameterVa
 			plan.StringEnum = values
 		}
 		return plan, nil
-	case openapi3.TypeInteger, openapi3.TypeNumber:
+	case openapi3.TypeInteger:
+		plan := ParameterValidationPlan{Kind: *schema.Type}
+		if schema.Minimum != nil {
+			plan.HasIntegerMinimum = true
+			plan.IntegerMinimum = integerConstraintString(schema.MinimumText, *schema.Minimum)
+			if schema.ExclusiveMinimum != nil {
+				plan.ExclusiveIntegerMinimum = *schema.ExclusiveMinimum
+			}
+		}
+		if schema.Maximum != nil {
+			plan.HasIntegerMaximum = true
+			plan.IntegerMaximum = integerConstraintString(schema.MaximumText, *schema.Maximum)
+			if schema.ExclusiveMaximum != nil {
+				plan.ExclusiveIntegerMaximum = *schema.ExclusiveMaximum
+			}
+		}
+		if schema.HasEnum {
+			values := make([]string, 0, len(schema.Enum))
+			for _, raw := range schema.Enum {
+				n, ok := anyToIntegerString(raw)
+				if !ok {
+					return ParameterValidationPlan{}, fmt.Errorf("numeric parameter enum contains non-numeric value of type %T", raw)
+				}
+				values = append(values, n)
+			}
+			plan.HasIntegerEnum = true
+			plan.IntegerEnum = values
+		}
+		return plan, nil
+	case openapi3.TypeNumber:
 		plan := ParameterValidationPlan{Kind: *schema.Type}
 		if schema.Minimum != nil {
 			plan.HasMinimum = true
@@ -473,6 +543,8 @@ func parseParameterValidationSchema(node *yaml.Node) (parameterValidationSchema,
 	}
 	out.Minimum = yamlMapFloat64(node, "minimum")
 	out.Maximum = yamlMapFloat64(node, "maximum")
+	out.MinimumText = yamlMapString(node, "minimum")
+	out.MaximumText = yamlMapString(node, "maximum")
 	out.ExclusiveMinimum = yamlMapBool(node, "exclusiveMinimum")
 	out.ExclusiveMaximum = yamlMapBool(node, "exclusiveMaximum")
 	out.XGoType = yamlMapString(node, extPropGoType)
@@ -653,6 +725,50 @@ func anyToFloat64(v any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func anyToIntegerString(v any) (string, bool) {
+	switch n := v.(type) {
+	case int:
+		return strconv.FormatInt(int64(n), 10), true
+	case int8:
+		return strconv.FormatInt(int64(n), 10), true
+	case int16:
+		return strconv.FormatInt(int64(n), 10), true
+	case int32:
+		return strconv.FormatInt(int64(n), 10), true
+	case int64:
+		return strconv.FormatInt(n, 10), true
+	case uint:
+		return strconv.FormatUint(uint64(n), 10), true
+	case uint8:
+		return strconv.FormatUint(uint64(n), 10), true
+	case uint16:
+		return strconv.FormatUint(uint64(n), 10), true
+	case uint32:
+		return strconv.FormatUint(uint64(n), 10), true
+	case uint64:
+		return strconv.FormatUint(n, 10), true
+	case float32:
+		if n != float32(int64(n)) {
+			return "", false
+		}
+		return strconv.FormatInt(int64(n), 10), true
+	case float64:
+		if n != float64(int64(n)) {
+			return "", false
+		}
+		return strconv.FormatInt(int64(n), 10), true
+	default:
+		return "", false
+	}
+}
+
+func integerConstraintString(valueText *string, valueFloat float64) string {
+	if valueText != nil && *valueText != "" {
+		return *valueText
+	}
+	return strconv.FormatFloat(valueFloat, 'f', -1, 64)
 }
 
 func goStringSliceLiteral(values []string) string {
