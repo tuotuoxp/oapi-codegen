@@ -324,6 +324,29 @@ func (r *parameterValidationResolver) parameterSchemaNode(paramRef *openapi3.Par
 	return yamlMapValue(paramNode, "schema"), filePath, nil
 }
 
+func (r *parameterValidationResolver) parameterTypeSchemaNode(paramRef *openapi3.ParameterRef, basePath []string, index int) (*yaml.Node, string, error) {
+	if paramRef == nil || paramRef.Value == nil {
+		return nil, "", nil
+	}
+	if paramRef.Ref != "" || len(basePath) == 0 || basePath[0] != "components" {
+		return r.parameterSchemaNode(paramRef, basePath, index)
+	}
+
+	doc, err := r.loadDocument(r.rootPath)
+	if err != nil {
+		return nil, "", &parameterValidationLookupError{err: err}
+	}
+	paramNode, err := followYAMLPath(doc, basePath...)
+	if err != nil {
+		return nil, "", &parameterValidationLookupError{err: err}
+	}
+	paramNode, filePath, err := r.resolveParameterNode(r.rootPath, paramNode, map[string]bool{})
+	if err != nil {
+		return nil, "", err
+	}
+	return yamlMapValue(paramNode, "schema"), filePath, nil
+}
+
 func (r *parameterValidationResolver) findParameterNode(paramsNode *yaml.Node, currentFile string, paramRef *openapi3.ParameterRef) (*yaml.Node, string, error) {
 	if paramsNode == nil || paramsNode.Kind != yaml.SequenceNode {
 		return nil, "", &parameterValidationLookupError{err: fmt.Errorf("parameter source path did not resolve to a sequence")}

@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -569,27 +570,35 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 	})
 	globalState.options.InputSpec = specPath
 
-	paramByPathAndName := func(path, name string) *openapi3.Parameter {
+	paramRefByPathAndName := func(path, name string) (*openapi3.ParameterRef, []string) {
 		t.Helper()
-		for _, p := range swagger.Paths.Value(path).Get.Parameters {
+		for i, p := range swagger.Paths.Value(path).Get.Parameters {
 			if p.Value != nil && p.Value.Name == name {
-				return p.Value
+				return p, []string{"paths", path, "get", "parameters", strconv.Itoa(i)}
 			}
 		}
 		t.Fatalf("parameter %q not found for path %q", name, path)
-		return nil
+		return nil, nil
 	}
 
 	tests := []struct {
 		name         string
-		param        *openapi3.Parameter
+		paramRef     *openapi3.ParameterRef
+		basePath     []string
 		wantResolved bool
 		wantGoType   string
 		assertion    func(t *testing.T, sref *openapi3.SchemaRef)
 	}{
 		{
-			name:         "two level local chain",
-			param:        paramByPathAndName("/two-level/{id}", "id"),
+			name: "two level local chain",
+			paramRef: func() *openapi3.ParameterRef {
+				p, _ := paramRefByPathAndName("/two-level/{id}", "id")
+				return p
+			}(),
+			basePath: func() []string {
+				_, p := paramRefByPathAndName("/two-level/{id}", "id")
+				return p
+			}(),
 			wantResolved: true,
 			wantGoType:   "int64",
 			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
@@ -600,8 +609,15 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 			},
 		},
 		{
-			name:         "three level local chain",
-			param:        paramByPathAndName("/three-level", "q"),
+			name: "three level local chain",
+			paramRef: func() *openapi3.ParameterRef {
+				p, _ := paramRefByPathAndName("/three-level", "q")
+				return p
+			}(),
+			basePath: func() []string {
+				_, p := paramRefByPathAndName("/three-level", "q")
+				return p
+			}(),
 			wantResolved: true,
 			wantGoType:   "string",
 			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
@@ -611,8 +627,15 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 			},
 		},
 		{
-			name:         "mixed chain preserves constraints",
-			param:        paramByPathAndName("/mixed", "code"),
+			name: "mixed chain preserves constraints",
+			paramRef: func() *openapi3.ParameterRef {
+				p, _ := paramRefByPathAndName("/mixed", "code")
+				return p
+			}(),
+			basePath: func() []string {
+				_, p := paramRefByPathAndName("/mixed", "code")
+				return p
+			}(),
 			wantResolved: true,
 			wantGoType:   "string",
 			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
@@ -627,14 +650,28 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 			},
 		},
 		{
-			name:         "cycle falls back",
-			param:        paramByPathAndName("/cycle", "loop"),
+			name: "cycle falls back",
+			paramRef: func() *openapi3.ParameterRef {
+				p, _ := paramRefByPathAndName("/cycle", "loop")
+				return p
+			}(),
+			basePath: func() []string {
+				_, p := paramRefByPathAndName("/cycle", "loop")
+				return p
+			}(),
 			wantResolved: false,
 			wantGoType:   "interface{}",
 		},
 		{
-			name:         "external multi level chain",
-			param:        paramByPathAndName("/external/{externalId}", "externalId"),
+			name: "external multi level chain",
+			paramRef: func() *openapi3.ParameterRef {
+				p, _ := paramRefByPathAndName("/external/{externalId}", "externalId")
+				return p
+			}(),
+			basePath: func() []string {
+				_, p := paramRefByPathAndName("/external/{externalId}", "externalId")
+				return p
+			}(),
 			wantResolved: true,
 			wantGoType:   "string",
 			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
@@ -644,8 +681,15 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 			},
 		},
 		{
-			name:         "single level regression",
-			param:        paramByPathAndName("/single-level", "trace"),
+			name: "single level regression",
+			paramRef: func() *openapi3.ParameterRef {
+				p, _ := paramRefByPathAndName("/single-level", "trace")
+				return p
+			}(),
+			basePath: func() []string {
+				_, p := paramRefByPathAndName("/single-level", "trace")
+				return p
+			}(),
 			wantResolved: true,
 			wantGoType:   "string",
 			assertion: func(t *testing.T, sref *openapi3.SchemaRef) {
@@ -655,8 +699,15 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 			},
 		},
 		{
-			name:         "untyped regression remains interface",
-			param:        paramByPathAndName("/unknown", "passthrough"),
+			name: "untyped regression remains interface",
+			paramRef: func() *openapi3.ParameterRef {
+				p, _ := paramRefByPathAndName("/unknown", "passthrough")
+				return p
+			}(),
+			basePath: func() []string {
+				_, p := paramRefByPathAndName("/unknown", "passthrough")
+				return p
+			}(),
 			wantResolved: false,
 			wantGoType:   "interface{}",
 		},
@@ -664,14 +715,14 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resolved, ok := resolveNestedParameterSchemaRef(tt.param.Schema)
+			resolved, ok := resolveParameterSchemaRefForType(tt.paramRef, tt.basePath, 0)
 			assert.Equal(t, tt.wantResolved, ok)
 			if tt.assertion != nil {
 				require.True(t, ok)
 				tt.assertion(t, resolved)
 			}
 
-			got, err := paramToGoType(tt.param, []string{"Params", tt.param.Name})
+			got, err := paramRefToGoType(tt.paramRef, []string{"Params", tt.paramRef.Value.Name}, tt.basePath, 0)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantGoType, got.GoType)
 		})

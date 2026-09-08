@@ -949,6 +949,14 @@ func GenParamStructFromSchema(schema Schema) string {
 // This constructs a Go type for a parameter, looking at either the schema or
 // the content, whichever is available
 func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
+	return paramRefToGoType(&openapi3.ParameterRef{Value: param}, path, nil, 0)
+}
+
+func paramRefToGoType(paramRef *openapi3.ParameterRef, path []string, basePath []string, index int) (Schema, error) {
+	if paramRef == nil || paramRef.Value == nil {
+		return Schema{}, fmt.Errorf("parameter is nil")
+	}
+	param := paramRef.Value
 	if param.Content == nil && param.Schema == nil {
 		return Schema{}, fmt.Errorf("parameter '%s' has no schema or content", param.Name)
 	}
@@ -956,8 +964,12 @@ func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
 	// We can process the schema through the generic schema processor
 	if param.Schema != nil {
 		schemaRef := param.Schema
-		if resolvedSchemaRef, ok := resolveNestedParameterSchemaRef(param.Schema); ok {
+		if resolvedSchemaRef, ok := resolveParameterSchemaRefForType(paramRef, basePath, index); ok {
 			schemaRef = resolvedSchemaRef
+		} else if fallbackSchemaRef, ok := unresolvedParameterSchemaFallbackRef(schemaRef); ok {
+			return GenerateGoSchema(fallbackSchemaRef, path)
+		} else if schemaRef.Value == nil {
+			schemaRef = openapi3.NewSchemaRef("", openapi3.NewSchema())
 		}
 		return GenerateGoSchema(schemaRef, path)
 	}
@@ -986,8 +998,8 @@ func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
 	return GenerateGoSchema(mt.Schema, path)
 }
 
-func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.SchemaRef, bool) {
-	if sref == nil || globalState.options.InputSpec == "" {
+func resolveParameterSchemaRefForType(paramRef *openapi3.ParameterRef, basePath []string, index int) (*openapi3.SchemaRef, bool) {
+	if paramRef == nil || paramRef.Value == nil || paramRef.Value.Schema == nil || globalState.options.InputSpec == "" {
 		return nil, false
 	}
 
@@ -995,7 +1007,21 @@ func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.Schema
 	if err != nil {
 		return nil, false
 	}
-	effective, err := resolver.resolveSchemaRef(resolver.rootPath, sref, map[string]bool{})
+	schemaNode, currentFile, err := resolver.parameterTypeSchemaNode(paramRef, basePath, index)
+	if err != nil {
+		var lookupErr *parameterValidationLookupError
+		if !errors.As(err, &lookupErr) {
+			return nil, false
+		}
+	}
+
+	var effective parameterValidationSchema
+	switch {
+	case schemaNode != nil:
+		effective, err = resolver.resolveSchema(currentFile, schemaNode, map[string]bool{})
+	default:
+		effective, err = resolver.resolveSchemaRef(resolver.rootPath, paramRef.Value.Schema, map[string]bool{})
+	}
 	if err != nil || effective.Type == nil || effective.HasAllOf || effective.HasAnyOf || effective.HasOneOf || effective.HasNot {
 		return nil, false
 	}
@@ -1005,11 +1031,7 @@ func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.Schema
 	default:
 		return nil, false
 	}
-
-	if sref.Value != nil && sref.Value.Type != nil && len(sref.Value.Type.Slice()) > 0 {
-		return nil, false
-	}
-
+	sref := paramRef.Value.Schema
 	clonedRef := *sref
 	clonedRef.Ref = ""
 	clonedValue := openapi3.NewSchema()
@@ -1067,6 +1089,34 @@ func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.Schema
 			clonedExt[extPropGoRef] = effective.XGoRef
 		}
 		clonedRef.Extensions = clonedExt
+	}
+	return &clonedRef, true
+}
+
+func resolveNestedParameterSchemaRef(sref *openapi3.SchemaRef) (*openapi3.SchemaRef, bool) {
+	if sref == nil {
+		return nil, false
+	}
+	return resolveParameterSchemaRefForType(&openapi3.ParameterRef{
+		Value: &openapi3.Parameter{Schema: sref},
+	}, nil, 0)
+}
+
+func unresolvedParameterSchemaFallbackRef(sref *openapi3.SchemaRef) (*openapi3.SchemaRef, bool) {
+	if sref == nil || sref.Ref == "" {
+		return nil, false
+	}
+	clonedRef := *sref
+	clonedRef.Ref = ""
+	if sref.Value != nil {
+		clonedValue := *sref.Value
+		clonedRef.Value = &clonedValue
+	} else {
+		clonedRef.Value = openapi3.NewSchema()
+	}
+	fallbackSchema, err := GenerateGoSchema(&clonedRef, nil)
+	if err != nil || fallbackSchema.GoType != "interface{}" {
+		return nil, false
 	}
 	return &clonedRef, true
 }

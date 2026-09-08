@@ -167,10 +167,10 @@ func TestGoTypeImport(t *testing.T) {
 		`github.com/mailru/easyjson`,           // direct parameters - query
 		`github.com/subosito/gotenv`,           // direct request body
 		`github.com/gorilla/schema`,            // direct parameters - header
-		`github.com/gorilla/mux`,              // component parameters - header
-		`github.com/gorilla/sessions`,         // component parameters - cookie
-		`resty "github.com/go-resty/resty"`,   // component parameters - header (x-go-ref)
-		`jwt "github.com/golang-jwt/jwt"`,     // component parameters - cookie (x-go-ref)
+		`github.com/gorilla/mux`,               // component parameters - header
+		`github.com/gorilla/sessions`,          // component parameters - cookie
+		`resty "github.com/go-resty/resty"`,    // component parameters - header (x-go-ref)
+		`jwt "github.com/golang-jwt/jwt"`,      // component parameters - cookie (x-go-ref)
 	}
 
 	// Check import
@@ -534,8 +534,7 @@ func TestRecursiveParameterRefsGenerateConcreteTypes(t *testing.T) {
 	assert.Contains(t, code, "type ReusableThreeLevel = string")
 	assert.Contains(t, code, "type ReusableExternal = string")
 
-	assert.Contains(t, code, "type GetTwoLevelParams struct {")
-	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Id\s+int64\b`), code)
+	assert.Contains(t, code, "GetTwoLevel(w http.ResponseWriter, r *http.Request, id int64)")
 	assert.Contains(t, code, "var id int64")
 	assert.NotContains(t, code, "var id interface{}")
 
@@ -543,11 +542,11 @@ func TestRecursiveParameterRefsGenerateConcreteTypes(t *testing.T) {
 	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Q\s+string\b`), code)
 
 	assert.Contains(t, code, "type GetMixedParams struct {")
-	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Code\s+string\b`), code)
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Code\s+GetMixedParamsCode\b`), code)
+	assert.Contains(t, code, "type GetMixedParamsCode string")
 	assert.Contains(t, code, `validateParamString("code", string(params.Code), 3, true, 8, true, "^[a-z]+$", true, []string{"foo", "bar"}, true)`)
 
-	assert.Contains(t, code, "type GetExternalParams struct {")
-	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*ExternalId\s+string\b`), code)
+	assert.Contains(t, code, "GetExternal(w http.ResponseWriter, r *http.Request, externalId string)")
 	assert.Contains(t, code, "var externalId string")
 	assert.NotContains(t, code, "var externalId interface{}")
 

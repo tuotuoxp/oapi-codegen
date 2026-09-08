@@ -47,7 +47,7 @@ paths:
           in: query
           required: true
           schema:
-            $ref: '#/components/schemas/CycleA'
+            $ref: ./schemas/cycle-a.yaml
       responses:
         "200":
           description: ok
@@ -134,10 +134,6 @@ components:
       enum:
         - foo
         - bar
-    CycleA:
-      $ref: '#/components/schemas/CycleB'
-    CycleB:
-      $ref: '#/components/schemas/CycleA'
     SingleLevel:
       $ref: '#/components/schemas/SingleLevelBase'
     SingleLevelBase:
