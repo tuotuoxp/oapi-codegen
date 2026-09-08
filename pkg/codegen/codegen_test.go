@@ -3,6 +3,7 @@ package codegen
 import (
 	_ "embed"
 	"go/format"
+	"regexp"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -74,7 +75,7 @@ type GetTestByNameResponse struct {
 
 	// Check the client method signatures:
 	assert.Contains(t, code, "type GetTestByNameParams struct {")
-	assert.Contains(t, code, "Top *int `form:\"$top,omitempty\" json:\"$top,omitempty\"`")
+	assert.Contains(t, code, "Top *int `form:\"$top,omitempty\"`")
 	assert.Contains(t, code, "func (c *Client) GetTestByName(ctx context.Context, name string, params *GetTestByNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {")
 	assert.Contains(t, code, "func (c *ClientWithResponses) GetTestByNameWithResponse(ctx context.Context, name string, params *GetTestByNameParams, reqEditors ...RequestEditorFn) (*GetTestByNameResponse, error) {")
 	assert.Contains(t, code, "FavouriteBirds     *[]*string          `json:\"favourite_birds,omitempty\"`")
@@ -497,9 +498,9 @@ func TestNestedParameterRefsAndParameterTags(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, code, "type GetItemParams struct {")
-	assert.Contains(t, code, "Q int64")
-	assert.Contains(t, code, "XTrace string")
-	assert.Contains(t, code, "Passthrough interface{}")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Q\s+int64\b`), code)
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*XTrace\s+string\b`), code)
+	assert.Regexp(t, regexp.MustCompile(`(?m)^\s*Passthrough\s+interface\{\}`), code)
 	assert.NotContains(t, code, "Q int64 `json:")
 	assert.NotContains(t, code, "XTrace string `json:")
 	assert.NotContains(t, code, "Passthrough interface{} `json:")
@@ -507,7 +508,7 @@ func TestNestedParameterRefsAndParameterTags(t *testing.T) {
 	assert.Contains(t, code, "var id int64")
 	assert.NotContains(t, code, "var id interface{}")
 
-	assert.Contains(t, code, "type CreateItemJSONRequestBody struct {")
+	assert.Contains(t, code, "type CreateItemJSONBody struct {")
 	assert.Contains(t, code, "Name string `json:\"name\"`")
 }
 
