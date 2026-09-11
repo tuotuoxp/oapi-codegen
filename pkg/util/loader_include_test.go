@@ -160,6 +160,101 @@ func TestPreprocessSwaggerIncludes(t *testing.T) {
 		}, got)
 	})
 
+	t.Run("merge_map inline plus multi-file include", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":       "paths: !merge_map\n  /health:\n    get:\n      summary: Health check\n  x-include:\n    - ./paths/pet.yaml\n    - ./paths/user.yaml\n",
+			"paths/pet.yaml":  " /pets:\n  get:\n    summary: list pets\n",
+			"paths/user.yaml": "/users:\n  get:\n    summary: list users\n",
+		}, "spec.yaml")
+
+		var got map[string]any
+		require.NoError(t, preprocessToValue(entryPath, &got))
+		require.Equal(t, map[string]any{
+			"paths": map[string]any{
+				"/health": map[string]any{
+					"get": map[string]any{"summary": "Health check"},
+				},
+				"/pets": map[string]any{
+					"get": map[string]any{"summary": "list pets"},
+				},
+				"/users": map[string]any{
+					"get": map[string]any{"summary": "list users"},
+				},
+			},
+		}, got)
+	})
+
+	t.Run("merge_map single-file include", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":      "paths: !merge_map\n  x-include: ./paths/pet.yaml\n",
+			"paths/pet.yaml": "/pets:\n  get:\n    summary: list pets\n",
+		}, "spec.yaml")
+
+		var got map[string]any
+		require.NoError(t, preprocessToValue(entryPath, &got))
+		require.Equal(t, map[string]any{
+			"paths": map[string]any{
+				"/pets": map[string]any{
+					"get": map[string]any{"summary": "list pets"},
+				},
+			},
+		}, got)
+	})
+
+	t.Run("merge_map duplicate key conflict", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":      "paths: !merge_map\n  /pets:\n    get:\n      summary: local\n  x-include:\n    - ./paths/pet.yaml\n",
+			"paths/pet.yaml": "/pets:\n  get:\n    summary: included\n",
+		}, "spec.yaml")
+
+		_, err := preprocessSwaggerIncludes(entryPath)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "duplicate key")
+		require.ErrorContains(t, err, "/pets")
+		require.ErrorContains(t, err, "paths/pet.yaml")
+	})
+
+	t.Run("merge_map included file root must be map", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":      "paths: !merge_map\n  x-include: ./paths/pet.yaml\n",
+			"paths/pet.yaml": "- 1\n- 2\n",
+		}, "spec.yaml")
+
+		_, err := preprocessSwaggerIncludes(entryPath)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "must be an object/map")
+	})
+
+	t.Run("merge_map include cycle detection", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml": "paths: !merge_map\n  x-include: ./a.yaml\n",
+			"a.yaml":    "paths: !merge_map\n  x-include: ./b.yaml\n",
+			"b.yaml":    "paths: !merge_map\n  x-include: ./a.yaml\n",
+		}, "spec.yaml")
+
+		_, err := preprocessSwaggerIncludes(entryPath)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "include cycle detected")
+		require.ErrorContains(t, err, "a.yaml")
+	})
+
+	t.Run("merge_map nested relative path resolution", func(t *testing.T) {
+		entryPath := writeFixtureFiles(t, map[string]string{
+			"spec.yaml":                  "paths: !merge_map\n  x-include: ./dirB/b.yaml\n",
+			"dirB/b.yaml":                "/pets:\n  get:\n    operationId: listPets\n    responses:\n      '200':\n        description: ok\n        content:\n          application/json:\n            schema:\n              $ref: ./schemas/pet.yaml\n/users:\n  get: !include ./operations/users.yaml\n",
+			"dirB/schemas/pet.yaml":      "type: object\nproperties:\n  fromPet:\n    type: string\n",
+			"dirB/operations/users.yaml": "responses:\n  '200':\n    description: ok\n    content:\n      application/json:\n        schema:\n          $ref: ../schemas/user.yaml\n",
+			"dirB/schemas/user.yaml":     "type: object\nproperties:\n  fromUser:\n    type: string\n",
+		}, "spec.yaml")
+
+		swagger, err := LoadSwagger(entryPath)
+		require.NoError(t, err)
+		petSchema := requireResponseSchema(t, swagger, "/pets")
+		require.Contains(t, petSchema.Value.Properties, "fromPet")
+		userSchema := requireResponseSchema(t, swagger, "/users")
+		require.Contains(t, userSchema.Value.Properties, "fromUser")
+	})
+
 	t.Run("missing include file returns context", func(t *testing.T) {
 		entryPath := writeFixtureFiles(t, map[string]string{
 			"spec.yaml": "root: !include ./does-not-exist.yaml\n",
