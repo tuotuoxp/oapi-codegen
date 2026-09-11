@@ -164,6 +164,13 @@ func loadYAMLDocument(filePath string) (*yaml.Node, error) {
 }
 
 func expandIncludes(node *yaml.Node, currentFile string, rootDir string, stack []string) error {
+	if node.Tag == "!merge_map" {
+		if err := expandMergeMap(node, currentFile, rootDir, stack); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	switch node.Kind {
 	case yaml.DocumentNode:
 		for _, child := range node.Content {
@@ -194,6 +201,105 @@ func expandIncludes(node *yaml.Node, currentFile string, rootDir string, stack [
 	}
 
 	return nil
+}
+
+func expandMergeMap(node *yaml.Node, currentFile string, rootDir string, stack []string) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("invalid use of !merge_map in %q: !merge_map is only supported for mapping nodes", currentFile)
+	}
+
+	mergedPairs := make([]*yaml.Node, 0, len(node.Content))
+	seenKeys := map[string]string{}
+	addNode := func(keyNode, valueNode *yaml.Node, source string) error {
+		if keyNode == nil || keyNode.Kind != yaml.ScalarNode {
+			return fmt.Errorf("failed to process !merge_map in %q: map keys must be scalars", currentFile)
+		}
+		key := keyNode.Value
+		if previousSource, exists := seenKeys[key]; exists {
+			return fmt.Errorf("duplicate key %q in !merge_map in %q: already defined in %s and also in %s", key, currentFile, previousSource, source)
+		}
+		seenKeys[key] = source
+		mergedPairs = append(mergedPairs, keyNode, valueNode)
+		return nil
+	}
+
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		keyNode := node.Content[i]
+		valueNode := node.Content[i+1]
+		if keyNode.Kind != yaml.ScalarNode {
+			return fmt.Errorf("failed to process !merge_map in %q: map keys must be scalar nodes", currentFile)
+		}
+		if keyNode.Value == "x-include" {
+			includeTargets, err := parseMergeMapIncludeTargets(valueNode, currentFile)
+			if err != nil {
+				return err
+			}
+			for _, includeTarget := range includeTargets {
+				includedNode, includePath, err := loadIncludedNode(&yaml.Node{Kind: yaml.ScalarNode, Tag: "!include", Value: includeTarget}, currentFile, rootDir, stack)
+				if err != nil {
+					return err
+				}
+				if includedNode.Kind != yaml.MappingNode {
+					return fmt.Errorf("failed to process !merge_map in %q for %q: included value must be an object/map", currentFile, includePath)
+				}
+				for j := 0; j+1 < len(includedNode.Content); j += 2 {
+					mergedKeyNode := includedNode.Content[j]
+					mergedValueNode := includedNode.Content[j+1]
+					if err := expandIncludes(mergedValueNode, includePath, rootDir, append(stack, includePath)); err != nil {
+						return err
+					}
+					if err := addNode(mergedKeyNode, mergedValueNode, includePath); err != nil {
+						return err
+					}
+				}
+			}
+			continue
+		}
+
+		if err := expandIncludes(valueNode, currentFile, rootDir, stack); err != nil {
+			return err
+		}
+		if err := addNode(keyNode, valueNode, fmt.Sprintf("inline map in %q", currentFile)); err != nil {
+			return err
+		}
+	}
+
+	node.Kind = yaml.MappingNode
+	node.Tag = ""
+	node.Content = mergedPairs
+	return nil
+}
+
+func parseMergeMapIncludeTargets(node *yaml.Node, currentFile string) ([]string, error) {
+	if node == nil {
+		return nil, fmt.Errorf("invalid x-include in %q: value is missing", currentFile)
+	}
+
+	switch node.Kind {
+case yaml.ScalarNode:
+		if node.Tag != "!!str" {
+			return nil, fmt.Errorf("invalid x-include in %q: expected a string or array of strings", currentFile)
+		}
+		if strings.TrimSpace(node.Value) == "" {
+			return nil, fmt.Errorf("invalid x-include in %q: include target is empty", currentFile)
+		}
+		return []string{node.Value}, nil
+	case yaml.SequenceNode:
+		targets := make([]string, 0, len(node.Content))
+		for _, item := range node.Content {
+			if item.Kind != yaml.ScalarNode {
+				return nil, fmt.Errorf("invalid x-include in %q: array entries must be scalar file paths", currentFile)
+			}
+			value := strings.TrimSpace(item.Value)
+			if value == "" {
+				return nil, fmt.Errorf("invalid x-include in %q: include target is empty", currentFile)
+			}
+			targets = append(targets, value)
+		}
+		return targets, nil
+	default:
+		return nil, fmt.Errorf("invalid x-include in %q: expected a string or array of strings", currentFile)
+	}
 }
 
 func expandIncludesInMap(node *yaml.Node, currentFile string, rootDir string, stack []string) error {
