@@ -276,7 +276,10 @@ func parseMergeMapIncludeTargets(node *yaml.Node, currentFile string) ([]string,
 	}
 
 	switch node.Kind {
-	case yaml.ScalarNode:
+case yaml.ScalarNode:
+		if node.Tag != "!!str" {
+			return nil, fmt.Errorf("invalid x-include in %q: expected a string or array of strings", currentFile)
+		}
 		if strings.TrimSpace(node.Value) == "" {
 			return nil, fmt.Errorf("invalid x-include in %q: include target is empty", currentFile)
 		}
