@@ -1,0 +1,19 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: Test x-go-ref with external JSON schema $ref in response headers
+servers:
+  - url: http://example.com/api
+
+paths:
+  /v1/admin/agreements:
+    post:
+      operationId: AdminUpsertResponseHeader
+      responses:
+        '200':
+          description: OK
+          headers:
+            X-GW-Admin-ID:
+              description: admin id
+              schema:
+                $ref: 'x-gw-admin-id.schema.json'

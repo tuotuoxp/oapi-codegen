@@ -1159,11 +1159,15 @@ func GenerateResponseDefinitions(operationID string, responses map[string]*opena
 				rd.Ref = refType
 				refSet[refType] = struct{}{}
 			}
-			// Ensure content schemas get the external ref qualifier so that
+			// Ensure response body and header schemas get the external ref qualifier so
 			// non-fixed status code paths (e.g. "default") emit the qualified type.
 			for i, rcd := range rd.Contents {
 				ensureExternalRefsInSchema(&rcd.Schema, responseOrRef.Ref)
 				rd.Contents[i] = rcd
+			}
+			for i, h := range rd.Headers {
+				ensureExternalRefsInSchema(&h.Schema, responseOrRef.Ref)
+				rd.Headers[i] = h
 			}
 		}
 		responseDefinitions = append(responseDefinitions, rd)

@@ -1,7 +1,6 @@
 package codegen
 
 import (
-	"strconv"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -570,7 +569,16 @@ func TestResolveNestedParameterSchemaRef(t *testing.T) {
 	})
 	globalState.options.InputSpec = specPath
 
-				return p, []string{"paths", path, "get", "parameters"}
+	paramRefByPathAndName := func(path, name string) (*openapi3.ParameterRef, []string) {
+		op := swagger.Paths.Value(path).Get
+		if op == nil {
+			t.Fatalf("operation not found for path %q", path)
+		}
+		for _, param := range op.Parameters {
+			if param.Value != nil && param.Value.Name == name {
+				return param, []string{"paths", path, "get", "parameters"}
+			}
+		}
 		t.Fatalf("parameter %q not found for path %q", name, path)
 		return nil, nil
 	}

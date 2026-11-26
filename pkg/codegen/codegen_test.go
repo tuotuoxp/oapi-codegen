@@ -478,6 +478,33 @@ func TestGoRefHeaderExternalJSONOverlay(t *testing.T) {
 		"expected package-qualified type from x-go-ref overlay next to external JSON $ref")
 }
 
+func TestGoRefResponseHeaderExternalJSON(t *testing.T) {
+	opts := Configuration{
+		PackageName: "api",
+		Generate: GenerateOptions{
+			EchoServer:   true,
+			Models:       true,
+			EmbeddedSpec: true,
+			Strict:       true,
+		},
+	}
+	spec := "test_specs/x-go-ref-response-header-external-json.yaml"
+	swagger, err := util.LoadSwagger(spec)
+	require.NoError(t, err)
+
+	code, err := Generate(swagger, opts)
+	require.NoError(t, err)
+	assert.NotEmpty(t, code)
+
+	_, err = format.Source([]byte(code))
+	require.NoError(t, err)
+
+	assert.Contains(t, code, `sdkopenapi "valuzon/backend/sdks/common/openapi"`,
+		"expected import from x-go-ref inside external JSON schema in response header")
+	assert.Contains(t, code, "sdkopenapi.XGWAdminIDHeader",
+		"expected package-qualified type from x-go-ref inside external JSON schema in response header")
+}
+
 func TestNestedParameterRefsAndParameterTags(t *testing.T) {
 	opts := Configuration{
 		PackageName: "api",
