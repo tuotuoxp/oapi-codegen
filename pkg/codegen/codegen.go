@@ -1324,6 +1324,13 @@ func OperationImports(ops []OperationDefinition) (map[string]goImport, error) {
 		}
 
 		for _, b := range op.Responses {
+			for _, h := range b.Headers {
+				imprts, err := OperationSchemaImports(&h.Schema)
+				if err != nil {
+					return nil, err
+				}
+				maps.Copy(res, imprts)
+			}
 			for _, c := range b.Contents {
 				imprts, err := OperationSchemaImports(&c.Schema)
 				if err != nil {

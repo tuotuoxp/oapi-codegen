@@ -32,12 +32,12 @@ func ensureExternalRefsInResponseDefinitions(defs *[]ResponseDefinition, ref str
 	for i, rd := range *defs {
 		for j, rcd := range rd.Contents {
 			ensureExternalRefsInSchema(&rcd.Schema, ref)
-
-			// make sure we then update it in-place
 			rd.Contents[j] = rcd
 		}
-
-		// make sure we then update it in-place
+		for j, h := range rd.Headers {
+			ensureExternalRefsInSchema(&h.Schema, ref)
+			rd.Headers[j] = h
+		}
 		(*defs)[i] = rd
 	}
 }
